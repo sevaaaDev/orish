@@ -3,4 +3,5 @@ CMake*
 build
 *.o
 ssshell
+debug
 mise.local.toml
