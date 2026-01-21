@@ -1,7 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <assert.h>
+#include <errno.h>
 
 char** parse_commands(char* commands) {
     int size = 1;
@@ -40,9 +42,12 @@ main(int argc, char** argv) {
 
     char** tokens = parse_commands(commands);
     if (!tokens) return 2;
-    for (int i = 0; tokens[i] != NULL; ++i) {
-        printf("%p = %s\n", tokens[i], tokens[i]);
+    if (execvp(tokens[0], tokens) == -1) {
+        printf("%s: %s: %s\n",argv[0], tokens[0], strerror(errno));
     }
+/*    for (int i = 0; tokens[i] != NULL; ++i) {
+        printf("%p = %s\n", tokens[i], tokens[i]);
+    }*/
 }
 // split by space
 // set token[0] to be cmd
