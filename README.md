@@ -1,10 +1,7 @@
-## features
-- command piping
-- conditional using and (&&) or (||) 
-- multiple command in one line (;)
-
 ## Current Goals
-- [ ] history arrow key keybind
+- [ ] multiple command in one line (;)
+- [ ] command piping
+- [ ] conditional using and (&&) or (||)
 
 ## Someday Goals
 - [ ] redirection (> >> < <<)
@@ -14,3 +11,4 @@
 - [ ] variable and env var
 - [ ] subshell
 - [ ] control structure
+- [ ] history arrow key keybind
