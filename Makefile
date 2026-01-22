@@ -1,4 +1,4 @@
-CFLAGS = -Wall -Wextra -std=c11 -pedantic
+CFLAGS = -Wall -Wextra -std=c23 -pedantic
 
 ssshell: main.c
 	$(CC) $(CFLAGS) main.c -o ssshell
