@@ -35,6 +35,36 @@ char** parse_commands(char* commands) {
     return tokens;
 }
 
+enum Token_Type {
+    T_Command,
+    T_Semi
+};
+
+typedef struct {
+    enum Token_Type type; 
+    void* value;
+} Token;
+
+Token** lexer(char* line) {
+    if (strlen(line) == 0) return NULL;
+    Token** tokens = malloc(2 * sizeof(Token*));
+    char** argv = malloc(2 * sizeof(char*));
+    char* arg = line
+    i = 0
+    while (line[i] != \0) {
+        c = line[i] 
+        if c == ' ' {
+            *c = \0
+            push arg to argv
+            arg = line[i+1]
+        }
+        if c == ; {
+                
+        }
+        ++i
+    }
+}
+
 int
 main(int argc, char** argv) {
     if (argc == 1) return 1; 
@@ -42,9 +72,9 @@ main(int argc, char** argv) {
 
     char** tokens = parse_commands(commands);
     if (!tokens) return 2;
-    if (execvp(tokens[0], tokens) == -1) {
+/*    if (execvp(tokens[0], tokens) == -1) {
         printf("%s: %s: %s\n",argv[0], tokens[0], strerror(errno));
-    }
+    }*/
 /*    for (int i = 0; tokens[i] != NULL; ++i) {
         printf("%p = %s\n", tokens[i], tokens[i]);
     }*/
