@@ -85,3 +85,23 @@ e() {
         l = tree
     return l
 }
+
+    ;;echo hello ;; cat main
+while (!is_eol()) {
+    c = advance()
+    switch c {
+        case ' ':
+            break
+        case ';':
+            addToken(SEMI)
+            break
+        default: 
+            do {
+                while(is(' ')) advance()
+                ptr = c
+                while(!is(' ') and !is_eol() and !next_is(';')) advance()
+                push_word(ptr)
+            } while (!is_eol() and !next_is(';'))
+            addToken(COMMAND)
+    }
+}
