@@ -16,16 +16,18 @@ da_free(void** arr, size_t len) {
     arrfree(arr);
 }
 
-bool is_eol(char* arr, size_t len, i) {
-    return (i >= len || arr[i] == '\0');
-}
+enum TokenType {
+    T_Command,
+    T_Separator
+};
 
-bool next_is(char c, char* arr, size_t len, i) {
-    return (i != len && arr[i+1] == c);
-}
+typedef struct {
+    enum TokenType type; 
+    void* value;
+} Token;
 
 Token** addToken(Token** token_arr, enum TokenType t, void* value) {
-    Token* tok = malloc(sizeof Token);
+    Token* tok = malloc(sizeof(Token));
     assert(tok);
     tok->type = t;
     tok->value = value;
@@ -33,52 +35,31 @@ Token** addToken(Token** token_arr, enum TokenType t, void* value) {
     return token_arr;
 }
 
-enum TokenType {
-    T_Command,
-    T_Separator
-};
-
-typedef struct {
-    enum Token_Type type; 
-    void* value;
-} Token;
 
 #define and &&
 #define or ||
-Token** lexer(char* line, size_t len) {
+Token** lexer(char* line) {
     Token** token_arr = NULL;
-    char** word_arr = NULL;
-    char* ptr = line;
-    int i = 0;
-    //     echo    hello ;   cat main.c
-    // echo hello; cat main.c
-    while (!is_eol(line, len, i)) {
-        char c = line[i];
-        switch c {
+    char* cur = line;
+    while (*cur != '\0') {
+        char* start = cur;
+        switch (*cur) {
         case ' ':
-            break
+            break;
         case ';':
             token_arr = addToken(token_arr, T_Separator, NULL);
-            line[i] = '\0';
-            break
+            break;
         default: 
-            do {
-                ptr = line[i];
-                // BUG: in "echo hello;" last o will be set to null
-                // BUG: in "echo hello ;" the i is at ;, so cant be handled by main loop
-                while((c != ' ') and !is_eol(line, len, i) and !next_is(';', line, len, i)) 
-                    c = line[++i];
-                arrput(word_arr, ptr);
-                while(c == ' ') {
-                    line[i] = '\0';
-                    c = line[++i];
-                }
-            } while (!is_eol(line, len, i) and !next_is(';', line, len, i));
-            token_arr = addToken(token_arr, T_Command, word_arr);
-            word_arr = NULL;
+            while (*(cur+1) != ';' and *(cur+1) != '\0') cur++;
+            int n = cur - start + 1;  
+            char* cmd = strndup(start, n); 
+
+            token_arr = addToken(token_arr, T_Command, cmd);
         }
-        i++;
+        cur++;
     }
+    arrput(token_arr, NULL);
+    return token_arr;
 }
 
 int
@@ -86,14 +67,15 @@ main(int argc, char** argv) {
     if (argc == 1) return 1; 
     char* commands = argv[1];
 
-    Token** tokens = lexer(commands, strlen(command));
+    Token** tokens = lexer(commands);
     if (!tokens) return 2;
-/*    if (execvp(tokens[0], tokens) == -1) {
-        printf("%s: %s: %s\n",argv[0], tokens[0], strerror(errno));
-    }*/
-/*    for (int i = 0; tokens[i] != NULL; ++i) {
-        printf("%p = %s\n", tokens[i], tokens[i]);
-    }*/
+    for (int i = 0; tokens[i]; ++i) {
+        Token* t = tokens[i];
+        if (t->value)
+            printf("type: %d, value: %s, len: %ld\n", t->type, (char*)t->value, strlen((char*)t->value));
+        else
+            printf("type: %d\n", t->type);
+    } 
 }
 // split by space
 // set token[0] to be cmd
