@@ -17,7 +17,7 @@ da_free(void** arr, size_t len) {
 }
 
 enum TokenType {
-    T_Command,
+    T_Word,
     T_Separator
 };
 
@@ -26,7 +26,19 @@ typedef struct {
     void* value;
 } Token;
 
-Token** addToken(Token** token_arr, enum TokenType t, void* value) {
+void 
+lexer_test(Token** tokens) {
+    for (int i = 0; tokens[i]; ++i) {
+        Token* t = tokens[i];
+        if (t->value)
+            printf("type: %d, value: %s, len: %ld\n", t->type, (char*)t->value, strlen((char*)t->value));
+        else
+            printf("type: %d\n", t->type);
+    } 
+}
+
+Token**
+addToken(Token** token_arr, enum TokenType t, void* value) {
     Token* tok = malloc(sizeof(Token));
     assert(tok);
     tok->type = t;
@@ -35,28 +47,25 @@ Token** addToken(Token** token_arr, enum TokenType t, void* value) {
     return token_arr;
 }
 
-
-#define and &&
-#define or ||
-Token** lexer(char* line) {
+Token**
+lexer(char* line) {
     Token** token_arr = NULL;
     char* cur = line;
     while (*cur != '\0') {
-        char* start = cur;
-        switch (*cur) {
+        char* start = cur++;
+        switch (*start) {
         case ' ':
             break;
         case ';':
             token_arr = addToken(token_arr, T_Separator, NULL);
             break;
         default: 
-            while (*(cur+1) != ';' and *(cur+1) != '\0') cur++;
-            int n = cur - start + 1;  
-            char* cmd = strndup(start, n); 
+            while (*(cur) != ';' && *(cur) != '\0' && *(cur) != ' ') cur++;
+            int len = cur - start;  
+            char* cmd = strndup(start, len); 
 
-            token_arr = addToken(token_arr, T_Command, cmd);
+            token_arr = addToken(token_arr, T_Word, cmd);
         }
-        cur++;
     }
     arrput(token_arr, NULL);
     return token_arr;
@@ -69,14 +78,9 @@ main(int argc, char** argv) {
 
     Token** tokens = lexer(commands);
     if (!tokens) return 2;
-    for (int i = 0; tokens[i]; ++i) {
-        Token* t = tokens[i];
-        if (t->value)
-            printf("type: %d, value: %s, len: %ld\n", t->type, (char*)t->value, strlen((char*)t->value));
-        else
-            printf("type: %d\n", t->type);
-    } 
+    lexer_test(tokens);
 }
+
 // split by space
 // set token[0] to be cmd
 // pass the rest token as param
