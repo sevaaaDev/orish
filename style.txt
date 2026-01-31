@@ -1,0 +1,13 @@
+typedef struct PascalCase {
+    ...
+} PascalCase;
+
+enum CAPITAL_SNAKE_CASE {
+    CAPITAL_SNAKE_CASE_name1,
+    CAPITAL_SNAKE_CASE_name2,
+}
+
+Type
+func_name() {}
+
+/* indent=4space */
