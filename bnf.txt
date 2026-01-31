@@ -1,13 +1,5 @@
-complete_command ::= <list> ';'
-                   | <list>
+complete_command = list, [';']
 
-list             ::= <list> ';' <simple_command>
-                   |            <simple_command>
+list             = simple_command, { ';', simple_command }
 
-simple_command   ::= <cmd_word> <cmd_suffix>
-                   | <cmd_word>
-
-cmd_word         ::= WORD
-
-cmd_suffix       ::=              WORD
-                   | <cmd_suffix> WORD
+simple_command   = WORD, { WORD }
