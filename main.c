@@ -9,83 +9,107 @@
 #include "stb_ds.h"
 
 void 
-da_free(void** arr, size_t len) {
+da_free(void **arr, size_t len) {
     for (size_t i = 0; i < len; ++i) {
         free(arr[i]);
     }
     arrfree(arr);
 }
 
-enum TOKEN_TYPE {
-    TOKEN_TYPE_word,
-    TOKEN_TYPE_separator
+enum Token_Type {
+    TOKEN_word,
+    TOKEN_separator
 };
 
-typedef struct {
-    enum TOKEN_TYPE type; 
-    void* value;
-} Token;
+struct Token {
+    enum Token_Type type; 
+    char *value;
+}; 
+
+void
+tok_free_array(struct Token **tokens) {
+    for (int i = 0; i < arrlen(tokens); ++i) {
+        struct Token *tok = tokens[i];
+        if (!tok) return;
+        free(tok->value);
+        free(tok);
+    }
+    arrfree(tokens);
+}
 
 void 
-lexer_test(Token** tokens) {
+lexer_test(struct Token **tokens) {
     for (int i = 0; tokens[i]; ++i) {
-        Token* t = tokens[i];
+        struct Token *t = tokens[i];
         if (t->value)
-            printf("type: %d, value: %s, len: %ld\n", t->type, (char*)t->value, strlen((char*)t->value));
+            printf("type: %d, value: %s, len: %ld\n", t->type, t->value, strlen(t->value));
         else
             printf("type: %d\n", t->type);
     } 
 }
 
-Token**
-addToken(Token** token_arr, enum TOKEN_TYPE t, void* value) {
-    Token* tok = malloc(sizeof(Token));
-    assert(tok);
+struct Token **
+add_token(struct Token **token_arr, enum Token_Type t, char *value) {
+    struct Token *tok = malloc(sizeof(struct Token));
+    if (!tok) {
+        printf("malloc error");
+        exit(1);
+    }
     tok->type = t;
     tok->value = value;
     arrput(token_arr, tok);
     return token_arr;
 }
 
-Token**
-lexer(char* line) {
-    Token** token_arr = NULL;
-    char* cur = line;
+struct Token **
+lexer(char *line) {
+    struct Token **token_arr = NULL;
+    char *cur = line;
     while (*cur != '\0') {
-        char* start = cur++;
+        char *start = cur++;
         switch (*start) {
         case ' ':
             break;
         case ';':
-            token_arr = addToken(token_arr, TOKEN_TYPE_separator, NULL);
+            token_arr = add_token(token_arr, TOKEN_separator, NULL);
             break;
         default: 
             while (*(cur) != ';' && *(cur) != '\0' && *(cur) != ' ') cur++;
             int len = cur - start;  
-            char* cmd = strndup(start, len); 
+            char *cmd = strndup(start, len); 
 
-            token_arr = addToken(token_arr, TOKEN_TYPE_word, cmd);
+            token_arr = add_token(token_arr, TOKEN_word, cmd);
         }
     }
     // TODO: should you do arrput(token_arr, NULL)?
     return token_arr;
 }
 
-enum TREE_NODE_TYPE {
-    TREE_NODE_TYPE_list,
-    TREE_NODE_TYPE_cmd,
-    TREE_NODE_TYPE_cmd_word,
+enum Ast_Type {
+    AST_TYPE_list,
+    AST_TYPE_cmd,
+    AST_TYPE_cmd_word,
 };
 
-typedef struct Node {
-    enum TREE_NODE_TYPE type;
-    Token* token;
-    struct Node** children;
-} Node;
+struct Ast_Node {
+    enum Ast_Type type;
+    const struct Token *token;
+    struct Ast_Node **children;
+};
 
-Node*
-make_node(enum TREE_NODE_TYPE t, Token* tok) {
-    Node* node = malloc(sizeof(Node));
+void
+ast_free(struct Ast_Node *root) {
+    if (root->children) {
+        for (int i = 0; i < arrlen(root->children); ++i) {
+            ast_free(root->children[i]);
+        }
+    }
+    free(root);
+}
+
+struct Ast_Node *
+make_node(enum Ast_Type t, struct Token *tok) {
+    struct Ast_Node *node = malloc(sizeof(struct Ast_Node));
     node->type = t; 
     node->token = tok; 
     node->children = NULL;
@@ -95,28 +119,28 @@ make_node(enum TREE_NODE_TYPE t, Token* tok) {
 typedef struct TokenIter {
     size_t i;
     size_t len;
-    Token** buf;
+    struct Token **buf;
 } TokenIter;
 
 TokenIter
-make_token_iter(Token** tok) {
+make_token_iter(struct Token **tok) {
     TokenIter iter = {.i = 0, .buf = tok};
     iter.len = arrlen(tok);
     return iter;
 }
 
 bool
-tok_match(TokenIter* iter, enum TOKEN_TYPE type) {
+tok_expect(TokenIter *iter, enum Token_Type type) {
     return (iter->i < iter->len && iter->buf[iter->i]->type == type);
 }
 
-Token*
-tok_consume(TokenIter* iter) {
+struct Token*
+tok_consume(TokenIter *iter) {
     return iter->buf[iter->i++];
 }
 
-Token*
-tok_peek(TokenIter* iter) {
+struct Token*
+tok_peek(TokenIter *iter) {
     return iter->buf[iter->i];
 }
 
@@ -125,39 +149,42 @@ enum PARSER_ERROR_TYPE {
     PARSER_ERROR_TYPE_unexpected_token,
 };
 
-char* PARSER_ERROR_TABLE[] = {
+char *PARSER_ERROR_TABLE[] = {
     [PARSER_ERROR_TYPE_success] = "Success",
     [PARSER_ERROR_TYPE_unexpected_token] = "Unexpected token",
 };
 
 typedef struct ParserError {
     enum PARSER_ERROR_TYPE type;
-    Token* token;
+    struct Token *token;
 } ParserError;
 
 ParserError
-parse_simple_command(TokenIter* iter, Node** out) {
-    if (!tok_match(iter, TOKEN_TYPE_word)) { 
+parse_simple_command(TokenIter *iter, struct Ast_Node **out) {
+    if (!tok_expect(iter, TOKEN_word)) { 
         return (ParserError){.type = PARSER_ERROR_TYPE_unexpected_token, .token = tok_consume(iter) };
     }
-    Node *node = make_node(TREE_NODE_TYPE_cmd, NULL);
+    struct Ast_Node *node = make_node(AST_TYPE_cmd, NULL);
     do {
-        Token* tok = tok_consume(iter);
-        arrput(node->children, make_node(TREE_NODE_TYPE_cmd_word, tok));
-    } while(tok_match(iter, TOKEN_TYPE_word));
+        struct Token *tok = tok_consume(iter);
+        arrput(node->children, make_node(AST_TYPE_cmd_word, tok));
+    } while(tok_expect(iter, TOKEN_word));
     *out = node;
     return (ParserError){.type = PARSER_ERROR_TYPE_success, .token = NULL };
 }
 
 int
-main(int argc, char** argv) {
+main(int argc, char **argv) {
     if (argc == 1) return 1; 
-    char* commands = argv[1];
+    char *commands = argv[1];
 
-    Token** tokens = lexer(commands);
+    struct Token **tokens = lexer(commands);
     if (!tokens) return 2;
     TokenIter iter = make_token_iter(tokens);
-    Node* root;
+    struct Ast_Node *root;
     ParserError err = parse_simple_command(&iter, &root);
     printf("%s\n", PARSER_ERROR_TABLE[err.type]);
+
+    ast_free(root);
+    tok_free_array(tokens);
 }
