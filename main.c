@@ -23,7 +23,7 @@ enum Token_Type {
 
 struct Token {
     enum Token_Type type; 
-    char *value;
+    const char *value;
 }; 
 
 void
@@ -31,7 +31,7 @@ tok_free_array(struct Token **tokens) {
     for (int i = 0; i < arrlen(tokens); ++i) {
         struct Token *tok = tokens[i];
         if (!tok) return;
-        free(tok->value);
+        free((void*)tok->value);
         free(tok);
     }
     arrfree(tokens);
@@ -71,7 +71,7 @@ lexer(char *line) {
         case ' ':
             break;
         case ';':
-            token_arr = add_token(token_arr, TOKEN_separator, NULL);
+            token_arr = add_token(token_arr, TOKEN_separator, strndup(start, cur - start));
             break;
         default: 
             while (*(cur) != ';' && *(cur) != '\0' && *(cur) != ' ') cur++;
@@ -144,25 +144,30 @@ tok_peek(TokenIter *iter) {
     return iter->buf[iter->i];
 }
 
-enum PARSER_ERROR_TYPE {
-    PARSER_ERROR_TYPE_success,
-    PARSER_ERROR_TYPE_unexpected_token,
+enum Parser_Stat_Kind {
+    PARSER_STAT_KIND_success,
+    PARSER_STAT_KIND_unexpected_token,
 };
 
-char *PARSER_ERROR_TABLE[] = {
-    [PARSER_ERROR_TYPE_success] = "Success",
-    [PARSER_ERROR_TYPE_unexpected_token] = "Unexpected token",
+static const char *PARSER_ERROR_TABLE[] = {
+    [PARSER_STAT_KIND_success] = "Success",
+    [PARSER_STAT_KIND_unexpected_token] = "Unexpected token",
 };
 
-typedef struct ParserError {
-    enum PARSER_ERROR_TYPE type;
-    struct Token *token;
-} ParserError;
+struct Parser_Status {
+    enum Parser_Stat_Kind kind;
+    union {
+        const struct Token *err_token;
+    } data;
+};
 
-ParserError
+struct Parser_Status
 parse_simple_command(TokenIter *iter, struct Ast_Node **out) {
     if (!tok_expect(iter, TOKEN_word)) { 
-        return (ParserError){.type = PARSER_ERROR_TYPE_unexpected_token, .token = tok_consume(iter) };
+        return (struct Parser_Status){ 
+            .kind = PARSER_STAT_KIND_unexpected_token, 
+            .data.err_token = tok_consume(iter)
+        };
     }
     struct Ast_Node *node = make_node(AST_TYPE_cmd, NULL);
     do {
@@ -170,21 +175,37 @@ parse_simple_command(TokenIter *iter, struct Ast_Node **out) {
         arrput(node->children, make_node(AST_TYPE_cmd_word, tok));
     } while(tok_expect(iter, TOKEN_word));
     *out = node;
-    return (ParserError){.type = PARSER_ERROR_TYPE_success, .token = NULL };
+    return (struct Parser_Status) {
+        .kind = PARSER_STAT_KIND_success,
+    };
 }
 
 int
 main(int argc, char **argv) {
-    if (argc == 1) return 1; 
+    int ret = 0;
+    if (argc == 1) {
+        ret = 1; 
+        goto quit;
+    }
     char *commands = argv[1];
 
     struct Token **tokens = lexer(commands);
-    if (!tokens) return 2;
+    if (!tokens) {
+        ret = 2;
+        goto quit;
+    };
     TokenIter iter = make_token_iter(tokens);
     struct Ast_Node *root;
-    ParserError err = parse_simple_command(&iter, &root);
-    printf("%s\n", PARSER_ERROR_TABLE[err.type]);
+    struct Parser_Status stat = parse_simple_command(&iter, &root);
+    if (stat.kind) { // error is non zero
+        printf("%s: \"%s\"\n", PARSER_ERROR_TABLE[stat.kind], stat.data.err_token->value);
+        ret = 3;
+        goto cleanup_token_quit;
+    }
 
-    ast_free(root);
+    if (stat.kind == PARSER_STAT_KIND_success) ast_free(root);
+cleanup_token_quit:
     tok_free_array(tokens);
+quit:
+    return ret;
 }
