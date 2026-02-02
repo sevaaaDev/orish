@@ -103,6 +103,7 @@ ast_free(struct Ast_Node *root) {
         for (int i = 0; i < arrlen(root->children); ++i) {
             ast_free(root->children[i]);
         }
+        arrfree(root->children);
     }
     free(root);
 }
