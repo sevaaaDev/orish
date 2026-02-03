@@ -181,6 +181,12 @@ parse_simple_command(TokenIter *iter, struct Ast_Node **out) {
     };
 }
 
+struct Parser_Status
+parser(struct Token **tokens, struct Ast_Node **out) {
+    TokenIter iter = make_token_iter(tokens);
+    return parse_simple_command(&iter, out);
+} 
+
 int
 main(int argc, char **argv) {
     int ret = 0;
@@ -195,9 +201,8 @@ main(int argc, char **argv) {
         ret = 2;
         goto quit;
     };
-    TokenIter iter = make_token_iter(tokens);
     struct Ast_Node *root;
-    struct Parser_Status stat = parse_simple_command(&iter, &root);
+    struct Parser_Status stat = parser(tokens, &root);
     if (stat.kind) { // error is non zero
         printf("%s: \"%s\"\n", PARSER_ERROR_TABLE[stat.kind], stat.data.err_token->value);
         ret = 3;
