@@ -61,6 +61,18 @@ add_token(struct Token **token_arr, enum Token_Type t, char *value) {
     return token_arr;
 }
 
+struct Token *
+make_token(enum Token_Type t, char *value) {
+    struct Token *tok = malloc(sizeof(struct Token));
+    if (!tok) {
+        printf("malloc error");
+        exit(1);
+    }
+    tok->type = t;
+    tok->value = value;
+    return tok;
+}
+
 struct Token **
 lexer(char *line) {
     struct Token **token_arr = NULL;
@@ -84,6 +96,48 @@ lexer(char *line) {
     // TODO: should you do arrput(token_arr, NULL)?
     return token_arr;
 }
+
+struct Lexer {
+    size_t current_col;
+    size_t buf_len;
+    const char *buf;
+};
+
+bool
+lex_scan(struct Lexer *l, struct Token **out) {
+    char *cur = l->buf[l->current_col];
+    while (*cur != '\0') {
+        char *start = cur++;
+        switch (*start) {
+        case ' ':
+            break;
+        case ';':
+            *out = make_token(TOKEN_separator, strndup(start, cur - start));
+            return true;
+            break;
+        default: 
+            while (*(cur) != ';' && *(cur) != '\0' && *(cur) != ' ') cur++;
+            int len = cur - start;  
+            char *cmd = strndup(start, len); 
+            *out = make_token(TOKEN_word, cmd);
+            return true;
+        }
+    }
+    return false;
+}
+
+bool
+lex_expect(enum Token_Type type, struct Lexer *lexer, struct Token **out) {
+    if (!lex_scan(lexer, out)) {
+        return false;
+    }
+    if (tok->type != type) {
+        *out = NULL;
+        return false;
+    }
+    return true
+}
+
 
 enum Ast_Type {
     AST_TYPE_list,
@@ -117,24 +171,6 @@ make_node(enum Ast_Type t, struct Token *tok) {
     return node;
 }
 
-typedef struct TokenIter {
-    size_t i;
-    size_t len;
-    struct Token **buf;
-} TokenIter;
-
-TokenIter
-make_token_iter(struct Token **tok) {
-    TokenIter iter = {.i = 0, .buf = tok};
-    iter.len = arrlen(tok);
-    return iter;
-}
-
-bool
-tok_expect(TokenIter *iter, enum Token_Type type) {
-    return (iter->i < iter->len && iter->buf[iter->i]->type == type);
-}
-
 struct Token*
 tok_consume(TokenIter *iter) {
     return iter->buf[iter->i++];
@@ -162,9 +198,11 @@ struct Parser_Status {
     } data;
 };
 
+
 struct Parser_Status
-parse_simple_command(TokenIter *iter, struct Ast_Node **out) {
-    if (!tok_expect(iter, TOKEN_word)) { 
+parse_simple_command(struct Lexer *lexer, struct Ast_Node **out) {
+    struct Token *tok;
+    if (!lex_expect(TOKEN_word, lexer, &tok)) { 
         return (struct Parser_Status){ 
             .kind = PARSER_STAT_KIND_unexpected_token, 
             .data.err_token = tok_consume(iter)
@@ -172,9 +210,8 @@ parse_simple_command(TokenIter *iter, struct Ast_Node **out) {
     }
     struct Ast_Node *node = make_node(AST_TYPE_cmd, NULL);
     do {
-        struct Token *tok = tok_consume(iter);
         arrput(node->children, make_node(AST_TYPE_cmd_word, tok));
-    } while(tok_expect(iter, TOKEN_word));
+    } while(lex_expect(TOKEN_word, lexer, &tok));
     *out = node;
     return (struct Parser_Status) {
         .kind = PARSER_STAT_KIND_success,
