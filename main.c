@@ -195,6 +195,27 @@ parse_simple_command(struct Parser *p, struct Ast_Node **out) {
     };
 }
 
+/* out must be free if not NULL */
+struct Parser_Status
+parse_list(struct Parser *p, struct Ast_Node **out) {
+    *out = NULL;
+    struct Ast_Node *cmd; 
+    struct Parser_Status err = parse_simple_command(p, &cmd);
+    if (err.kind) return err;
+    struct Ast_Node *node = make_node(AST_TYPE_list, NULL);
+    arrput(node->children, cmd);
+    *out = node;
+    while(peek_token(p) && peek_token(p)->type == TOKEN_separator) {  
+        free(consume_token(p));
+        struct Parser_Status err = parse_simple_command(p, &cmd);
+        if (err.kind) return err;
+        arrput(node->children, cmd);
+    }
+    return (struct Parser_Status) {
+        .kind = PARSER_STAT_KIND_success,
+    };
+}
+
 void
 exec_ast(struct Ast_Node *root) {
     for (int i = 0; i < arrlen(root->children); ++i) {
@@ -216,9 +237,9 @@ main(int argc, char **argv) {
     struct Lexer *lexer = lex_new(commands);
     struct Parser *parser = parser_new(lexer);
     struct Ast_Node *root;
-    struct Parser_Status stat = parse_simple_command(parser, &root);
+    struct Parser_Status stat = parse_list(parser, &root);
+    if (stat.kind) ret = 3;
 
-    exec_ast(root);
 quit:
     free(lexer);
     free(parser);
