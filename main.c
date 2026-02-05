@@ -8,12 +8,25 @@
 #define STB_DS_IMPLEMENTATION
 #include "stb_ds.h"
 
-void 
-da_free(void **arr, size_t len) {
-    for (size_t i = 0; i < len; ++i) {
-        free(arr[i]);
+struct Lexer {
+    const char *buf_start;
+    const char *cur;
+    const char *last_newline;
+    size_t cur_line;
+};
+
+struct Lexer *
+lex_new(const char *input) {
+    struct Lexer *l = malloc(sizeof(struct Lexer));
+    if (!l) {
+        printf("malloc error\nabborting");
+        exit(1);
     }
-    arrfree(arr);
+    l->buf_start = input;
+    l->cur = input;
+    l->last_newline = input;
+    l->cur_line = 1;
+    return l;
 }
 
 enum Token_Type {
@@ -23,43 +36,8 @@ enum Token_Type {
 
 struct Token {
     enum Token_Type type; 
-    const char *value;
+    char *value;
 }; 
-
-void
-tok_free_array(struct Token **tokens) {
-    for (int i = 0; i < arrlen(tokens); ++i) {
-        struct Token *tok = tokens[i];
-        if (!tok) return;
-        free((void*)tok->value);
-        free(tok);
-    }
-    arrfree(tokens);
-}
-
-void 
-lexer_test(struct Token **tokens) {
-    for (int i = 0; tokens[i]; ++i) {
-        struct Token *t = tokens[i];
-        if (t->value)
-            printf("type: %d, value: %s, len: %ld\n", t->type, t->value, strlen(t->value));
-        else
-            printf("type: %d\n", t->type);
-    } 
-}
-
-struct Token **
-add_token(struct Token **token_arr, enum Token_Type t, char *value) {
-    struct Token *tok = malloc(sizeof(struct Token));
-    if (!tok) {
-        printf("malloc error");
-        exit(1);
-    }
-    tok->type = t;
-    tok->value = value;
-    arrput(token_arr, tok);
-    return token_arr;
-}
 
 struct Token *
 make_token(enum Token_Type t, char *value) {
@@ -73,71 +51,43 @@ make_token(enum Token_Type t, char *value) {
     return tok;
 }
 
-struct Token **
-lexer(char *line) {
-    struct Token **token_arr = NULL;
-    char *cur = line;
-    while (*cur != '\0') {
-        char *start = cur++;
+void
+lex_destroy_token(struct Token *tok) {
+   free(tok->value);
+   free(tok);
+} 
+
+struct Token *
+lex_scan(struct Lexer *l) {
+    while (*(l->cur) != '\0') {
+        const char *start = l->cur++;
         switch (*start) {
         case ' ':
             break;
         case ';':
-            token_arr = add_token(token_arr, TOKEN_separator, strndup(start, cur - start));
+            return make_token(TOKEN_separator, strndup(start, l->cur - start));
             break;
         default: 
-            while (*(cur) != ';' && *(cur) != '\0' && *(cur) != ' ') cur++;
-            int len = cur - start;  
+            while (*(l->cur) != ';' && *(l->cur) != '\0' && *(l->cur) != ' ') l->cur++;
+            int len = l->cur - start;  
             char *cmd = strndup(start, len); 
-
-            token_arr = add_token(token_arr, TOKEN_word, cmd);
+            return make_token(TOKEN_word, cmd);
         }
     }
-    // TODO: should you do arrput(token_arr, NULL)?
-    return token_arr;
+    return NULL;
 }
 
-struct Lexer {
-    size_t current_col;
-    size_t buf_len;
-    const char *buf;
-};
-
+/* this function will be used when we implement keyword */
 bool
-lex_scan(struct Lexer *l, struct Token **out) {
-    char *cur = l->buf[l->current_col];
-    while (*cur != '\0') {
-        char *start = cur++;
-        switch (*start) {
-        case ' ':
-            break;
-        case ';':
-            *out = make_token(TOKEN_separator, strndup(start, cur - start));
-            return true;
-            break;
-        default: 
-            while (*(cur) != ';' && *(cur) != '\0' && *(cur) != ' ') cur++;
-            int len = cur - start;  
-            char *cmd = strndup(start, len); 
-            *out = make_token(TOKEN_word, cmd);
-            return true;
-        }
-    }
-    return false;
-}
-
-bool
-lex_expect(enum Token_Type type, struct Lexer *lexer, struct Token **out) {
-    if (!lex_scan(lexer, out)) {
+lex_classify_word(enum Token_Type type, const struct Token *tok) {
+    if (tok->type != TOKEN_word) return false;
+    switch (type) {
+    case TOKEN_word:
+        return true;
+    default:
         return false;
     }
-    if (tok->type != type) {
-        *out = NULL;
-        return false;
-    }
-    return true
 }
-
 
 enum Ast_Type {
     AST_TYPE_list,
@@ -171,58 +121,89 @@ make_node(enum Ast_Type t, struct Token *tok) {
     return node;
 }
 
-struct Token*
-tok_consume(TokenIter *iter) {
-    return iter->buf[iter->i++];
-}
-
-struct Token*
-tok_peek(TokenIter *iter) {
-    return iter->buf[iter->i];
-}
-
 enum Parser_Stat_Kind {
     PARSER_STAT_KIND_success,
     PARSER_STAT_KIND_unexpected_token,
+    PARSER_STAT_KIND_missing_token,
 };
 
 static const char *PARSER_ERROR_TABLE[] = {
     [PARSER_STAT_KIND_success] = "Success",
-    [PARSER_STAT_KIND_unexpected_token] = "Unexpected token",
+    [PARSER_STAT_KIND_unexpected_token] = "Unexpected token: %s",
+    [PARSER_STAT_KIND_missing_token] = "Missing token: %s",
 };
 
 struct Parser_Status {
     enum Parser_Stat_Kind kind;
-    union {
-        const struct Token *err_token;
-    } data;
+    struct Token *tok;
 };
 
+struct Parser {
+    struct Lexer *l;
+    struct Token *lookahead;
+};
+
+struct Parser *
+parser_new(struct Lexer *l) {
+    struct Parser *p = malloc(sizeof(struct Parser));
+    if (!p) {
+        printf("malloc error");
+        exit(1);
+    }
+    p->l = l;
+    p->lookahead = NULL;
+    return p;
+}
+
+const struct Token *
+peek_token(struct Parser *p) {
+    if (p->lookahead == NULL)
+        p->lookahead = lex_scan(p->l);
+    return p->lookahead;
+}
+
+struct Token *
+consume_token(struct Parser *p) {
+    if (p->lookahead == NULL)
+        p->lookahead = lex_scan(p->l);
+    struct Token *tok = p->lookahead;
+    p->lookahead = NULL;
+    return tok;
+}
 
 struct Parser_Status
-parse_simple_command(struct Lexer *lexer, struct Ast_Node **out) {
-    struct Token *tok;
-    if (!lex_expect(TOKEN_word, lexer, &tok)) { 
-        return (struct Parser_Status){ 
-            .kind = PARSER_STAT_KIND_unexpected_token, 
-            .data.err_token = tok_consume(iter)
+parse_simple_command(struct Parser *p, struct Ast_Node **out) {
+    if (!peek_token(p)) {
+       return (struct Parser_Status){
+            .kind = PARSER_STAT_KIND_missing_token,
+            .tok = consume_token(p),
+        };
+    }
+    if (!lex_classify_word(TOKEN_word, peek_token(p))) {
+       return (struct Parser_Status){
+            .kind = PARSER_STAT_KIND_unexpected_token,
+            .tok = consume_token(p),
         };
     }
     struct Ast_Node *node = make_node(AST_TYPE_cmd, NULL);
     do {
-        arrput(node->children, make_node(AST_TYPE_cmd_word, tok));
-    } while(lex_expect(TOKEN_word, lexer, &tok));
+        arrput(node->children, make_node(AST_TYPE_cmd_word, consume_token(p)));
+    } while(peek_token(p) && lex_classify_word(TOKEN_word, peek_token(p)));
     *out = node;
     return (struct Parser_Status) {
         .kind = PARSER_STAT_KIND_success,
     };
 }
 
-struct Parser_Status
-parser(struct Token **tokens, struct Ast_Node **out) {
-    TokenIter iter = make_token_iter(tokens);
-    return parse_simple_command(&iter, out);
-} 
+void
+exec_ast(struct Ast_Node *root) {
+    for (int i = 0; i < arrlen(root->children); ++i) {
+        struct Ast_Node *node = root->children[i];
+        if (node->type == AST_TYPE_cmd_word)
+            printf("(%s)", node->token->value);
+    }
+    printf("\n");
+}
 
 int
 main(int argc, char **argv) {
@@ -232,23 +213,15 @@ main(int argc, char **argv) {
         goto quit;
     }
     char *commands = argv[1];
-
-    struct Token **tokens = lexer(commands);
-    if (!tokens) {
-        ret = 2;
-        goto quit;
-    };
+    struct Lexer *lexer = lex_new(commands);
+    struct Parser *parser = parser_new(lexer);
     struct Ast_Node *root;
-    struct Parser_Status stat = parser(tokens, &root);
-    if (stat.kind) { // error is non zero
-        printf("%s: \"%s\"\n", PARSER_ERROR_TABLE[stat.kind], stat.data.err_token->value);
-        ret = 3;
-        goto cleanup_token_quit;
-    }
+    struct Parser_Status stat = parse_simple_command(parser, &root);
 
-    if (stat.kind == PARSER_STAT_KIND_success) ast_free(root);
-cleanup_token_quit:
-    tok_free_array(tokens);
+    exec_ast(root);
 quit:
+    free(lexer);
+    free(parser);
+
     return ret;
 }
