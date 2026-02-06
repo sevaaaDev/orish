@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <assert.h>
 #include <errno.h>
+#include <sys/wait.h>
 
 #define STB_DS_IMPLEMENTATION
 #include "stb_ds.h"
@@ -216,14 +217,43 @@ parse_list(struct Parser *p, struct Ast_Node **out) {
     };
 }
 
+
 void
-exec_ast(struct Ast_Node *root) {
+exec_cmd(struct Ast_Node *root) {
+    if (root->type != AST_TYPE_cmd) return;
+    char **argv = NULL;
     for (int i = 0; i < arrlen(root->children); ++i) {
-        struct Ast_Node *node = root->children[i];
-        if (node->type == AST_TYPE_cmd_word)
-            printf("(%s)", node->token->value);
+        struct Ast_Node *child = root->children[i];
+        arrput(argv, child->token->value);
     }
-    printf("\n");
+    arrput(argv, NULL);
+    pid_t pid = fork();
+    if (pid == -1) goto cleanup; 
+    if (pid == 0) {
+        if (execvp(argv[0], argv) == -1) {
+            perror(argv[0]);
+            exit(127);
+        } 
+    } else {
+        wait(NULL);
+    }
+cleanup:
+    arrfree(argv);        
+}
+
+void
+exec_prog(struct Ast_Node *root) {
+    if (root->type != AST_TYPE_list) return;
+    for (int i = 0; i < arrlen(root->children); ++i) {
+        struct Ast_Node *child = root->children[i];
+        switch (child->type) {
+            case AST_TYPE_cmd:
+                exec_cmd(child);
+                break;
+            default:
+                assert(0 == "TODO: implement exec non simple cmd");
+        }
+    }
 }
 
 int
@@ -238,9 +268,14 @@ main(int argc, char **argv) {
     struct Parser *parser = parser_new(lexer);
     struct Ast_Node *root;
     struct Parser_Status stat = parse_list(parser, &root);
-    if (stat.kind) ret = 3;
+    if (stat.kind) {
+        ret = 3;
+        goto quit;
+    }
+    exec_prog(root);
 
 quit:
+    ast_free(root);
     free(lexer);
     free(parser);
 
