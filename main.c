@@ -5,9 +5,15 @@
 #include <assert.h>
 #include <errno.h>
 #include <sys/wait.h>
+#define ARENA_IMPLEMENTATION
+#include "arena.h"
 
-#define STB_DS_IMPLEMENTATION
-#include "stb_ds.h"
+static Arena main_arena = {0};
+static Arena *context_arena = &main_arena;
+void *main_alloc(size_t size) {
+    assert(context_arena);
+    return arena_alloc(context_arena, size);
+}
 
 struct Lexer {
     const char *buf_start;
@@ -16,17 +22,13 @@ struct Lexer {
     size_t cur_line;
 };
 
-struct Lexer *
+struct Lexer 
 lex_new(const char *input) {
-    struct Lexer *l = malloc(sizeof(struct Lexer));
-    if (!l) {
-        printf("malloc error\nabborting");
-        exit(1);
-    }
-    l->buf_start = input;
-    l->cur = input;
-    l->last_newline = input;
-    l->cur_line = 1;
+    struct Lexer l;
+    l.buf_start = input;
+    l.cur = input;
+    l.last_newline = input;
+    l.cur_line = 1;
     return l;
 }
 
@@ -42,9 +44,9 @@ struct Token {
 
 struct Token *
 make_token(enum Token_Type t, char *value) {
-    struct Token *tok = malloc(sizeof(struct Token));
+    struct Token *tok = arena_alloc(context_arena, sizeof(struct Token));
     if (!tok) {
-        printf("malloc error");
+        printf("arena_alloc error");
         exit(1);
     }
     tok->type = t;
@@ -52,11 +54,12 @@ make_token(enum Token_Type t, char *value) {
     return tok;
 }
 
-void
-lex_destroy_token(struct Token *tok) {
-   free(tok->value);
-   free(tok);
-} 
+char *arena_strndup(const char *src, size_t len) {
+    char *str = arena_alloc(context_arena, len+1);
+    strncpy(str, src, len);
+    str[len] = '\0';
+    return str;
+}
 
 struct Token *
 lex_scan(struct Lexer *l) {
@@ -66,12 +69,12 @@ lex_scan(struct Lexer *l) {
         case ' ':
             break;
         case ';':
-            return make_token(TOKEN_separator, strndup(start, l->cur - start));
+            return make_token(TOKEN_separator, arena_strndup(start, l->cur - start));
             break;
         default: 
             while (*(l->cur) != ';' && *(l->cur) != '\0' && *(l->cur) != ' ') l->cur++;
             int len = l->cur - start;  
-            char *cmd = strndup(start, len); 
+            char *cmd = arena_strndup(start, len);
             return make_token(TOKEN_word, cmd);
         }
     }
@@ -96,29 +99,24 @@ enum Ast_Type {
     AST_TYPE_cmd_word,
 };
 
+struct Array_Ast_Node {
+    size_t capacity;
+    size_t count;
+    struct Ast_Node **items;
+};
+
 struct Ast_Node {
     enum Ast_Type type;
     const struct Token *token;
-    struct Ast_Node **children;
+    struct Array_Ast_Node children;
 };
-
-void
-ast_free(struct Ast_Node *root) {
-    if (root->children) {
-        for (int i = 0; i < arrlen(root->children); ++i) {
-            ast_free(root->children[i]);
-        }
-        arrfree(root->children);
-    }
-    free(root);
-}
 
 struct Ast_Node *
 make_node(enum Ast_Type t, struct Token *tok) {
-    struct Ast_Node *node = malloc(sizeof(struct Ast_Node));
+    struct Ast_Node *node = arena_alloc(context_arena, sizeof(struct Ast_Node));
     node->type = t; 
     node->token = tok; 
-    node->children = NULL;
+    node->children = (struct Array_Ast_Node){0};
     return node;
 }
 
@@ -144,15 +142,11 @@ struct Parser {
     struct Token *lookahead;
 };
 
-struct Parser *
+struct Parser 
 parser_new(struct Lexer *l) {
-    struct Parser *p = malloc(sizeof(struct Parser));
-    if (!p) {
-        printf("malloc error");
-        exit(1);
-    }
-    p->l = l;
-    p->lookahead = NULL;
+    struct Parser p;
+    p.l = l;
+    p.lookahead = NULL;
     return p;
 }
 
@@ -188,7 +182,7 @@ parse_simple_command(struct Parser *p, struct Ast_Node **out) {
     }
     struct Ast_Node *node = make_node(AST_TYPE_cmd, NULL);
     do {
-        arrput(node->children, make_node(AST_TYPE_cmd_word, consume_token(p)));
+        arena_da_append(context_arena, &node->children, make_node(AST_TYPE_cmd_word, consume_token(p)));
     } while(peek_token(p) && lex_classify_word(TOKEN_word, peek_token(p)));
     *out = node;
     return (struct Parser_Status) {
@@ -204,13 +198,13 @@ parse_list(struct Parser *p, struct Ast_Node **out) {
     struct Parser_Status err = parse_simple_command(p, &cmd);
     if (err.kind) return err;
     struct Ast_Node *node = make_node(AST_TYPE_list, NULL);
-    arrput(node->children, cmd);
+    arena_da_append(context_arena, &node->children, cmd);
     *out = node;
     while(peek_token(p) && peek_token(p)->type == TOKEN_separator) {  
-        free(consume_token(p));
+        consume_token(p);
         struct Parser_Status err = parse_simple_command(p, &cmd);
         if (err.kind) return err;
-        arrput(node->children, cmd);
+        arena_da_append(context_arena, &node->children, cmd);
     }
     return (struct Parser_Status) {
         .kind = PARSER_STAT_KIND_success,
@@ -221,14 +215,13 @@ parse_list(struct Parser *p, struct Ast_Node **out) {
 void
 exec_cmd(struct Ast_Node *root) {
     if (root->type != AST_TYPE_cmd) return;
-    char **argv = NULL;
-    for (int i = 0; i < arrlen(root->children); ++i) {
-        struct Ast_Node *child = root->children[i];
-        arrput(argv, child->token->value);
+    char *argv[root->children.count+1] = {};
+    for (size_t i = 0; i < root->children.count; ++i) {
+        struct Ast_Node *child = root->children.items[i];
+        argv[i] = child->token->value;
     }
-    arrput(argv, NULL);
     pid_t pid = fork();
-    if (pid == -1) goto cleanup; 
+    if (pid == -1) return; 
     if (pid == 0) {
         if (execvp(argv[0], argv) == -1) {
             perror(argv[0]);
@@ -237,15 +230,13 @@ exec_cmd(struct Ast_Node *root) {
     } else {
         wait(NULL);
     }
-cleanup:
-    arrfree(argv);        
 }
 
 void
 exec_prog(struct Ast_Node *root) {
     if (root->type != AST_TYPE_list) return;
-    for (int i = 0; i < arrlen(root->children); ++i) {
-        struct Ast_Node *child = root->children[i];
+    for (size_t i = 0; i < root->children.count; ++i) {
+        struct Ast_Node *child = root->children.items[i];
         switch (child->type) {
             case AST_TYPE_cmd:
                 exec_cmd(child);
@@ -264,10 +255,10 @@ main(int argc, char **argv) {
         goto quit;
     }
     char *commands = argv[1];
-    struct Lexer *lexer = lex_new(commands);
-    struct Parser *parser = parser_new(lexer);
+    struct Lexer lexer = lex_new(commands);
+    struct Parser parser = parser_new(&lexer);
     struct Ast_Node *root;
-    struct Parser_Status stat = parse_list(parser, &root);
+    struct Parser_Status stat = parse_list(&parser, &root);
     if (stat.kind) {
         ret = 3;
         goto quit;
@@ -275,9 +266,6 @@ main(int argc, char **argv) {
     exec_prog(root);
 
 quit:
-    ast_free(root);
-    free(lexer);
-    free(parser);
-
+    arena_free(context_arena);
     return ret;
 }
