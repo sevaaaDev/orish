@@ -8,6 +8,7 @@
 #define ARENA_IMPLEMENTATION
 #include "arena.h"
 
+/* TODO: should arena be global? */
 static Arena main_arena = {0};
 static Arena *context_arena = &main_arena;
 void *main_alloc(size_t size) {
@@ -82,6 +83,10 @@ lex_scan(struct Lexer *l) {
 }
 
 /* this function will be used when we implement keyword */
+/* TODO: find good name for this
+ *    - lexer_token_classified_as
+ *    - lexer_token_allow_reclassify
+ * */
 bool
 lex_classify_word(enum Token_Type type, const struct Token *tok) {
     if (tok->type != TOKEN_word) return false;
@@ -137,6 +142,7 @@ struct Parser_Status {
     struct Token *tok;
 };
 
+/* TODO: add second lookahead */
 struct Parser {
     struct Lexer *l;
     struct Token *lookahead;
@@ -150,6 +156,7 @@ parser_new(struct Lexer *l) {
     return p;
 }
 
+/* TODO: add second lookahead peek */
 const struct Token *
 peek_token(struct Parser *p) {
     if (p->lookahead == NULL)
@@ -157,6 +164,7 @@ peek_token(struct Parser *p) {
     return p->lookahead;
 }
 
+/* TODO: consume first lookahead, then move the second lookahead to the first */
 struct Token *
 consume_token(struct Parser *p) {
     if (p->lookahead == NULL)
@@ -166,6 +174,7 @@ consume_token(struct Parser *p) {
     return tok;
 }
 
+/* TODO: overhaul error handling */
 struct Parser_Status
 parse_simple_command(struct Parser *p, struct Ast_Node **out) {
     if (!peek_token(p)) {
@@ -190,7 +199,7 @@ parse_simple_command(struct Parser *p, struct Ast_Node **out) {
     };
 }
 
-/* out must be free if not NULL */
+/* TODO: use second lookahead to match grammar */
 struct Parser_Status
 parse_list(struct Parser *p, struct Ast_Node **out) {
     *out = NULL;
@@ -215,6 +224,9 @@ parse_list(struct Parser *p, struct Ast_Node **out) {
 void
 exec_cmd(struct Ast_Node *root) {
     if (root->type != AST_TYPE_cmd) return;
+    /* WARN: is empty init equal to zero init? the last elem must be 0 */
+    /* WARN: variable size array means we cant do argument expansion,
+     *       because the argc will be greater than children count */
     char *argv[root->children.count+1] = {};
     for (size_t i = 0; i < root->children.count; ++i) {
         struct Ast_Node *child = root->children.items[i];
@@ -254,6 +266,8 @@ main(int argc, char **argv) {
         ret = 1; 
         goto quit;
     }
+    /* TODO: read input from file */
+    /* TODO: read input from stdin */
     char *commands = argv[1];
     struct Lexer lexer = lex_new(commands);
     struct Parser parser = parser_new(&lexer);
