@@ -2,6 +2,6 @@ main
 CMake*
 build
 *.o
-ssshell
+orish
 debug
 mise.local.toml
