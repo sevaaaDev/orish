@@ -1,14 +1,20 @@
-## Current Goals
-- [ ] multiple command in one line (;)
+## Roadmap
+
+### get it work
+- [ ] command list (;)
 - [ ] command piping
 - [ ] conditional using and (&&) or (||)
 
-## Someday Goals
-- [ ] redirection (> >> < <<)
-- [ ] job control
+### usable
+- [ ] readline
+- [ ] read from file
+
+### qol
 - [ ] quotes and escape
+- [ ] redirection (> >> < <<)
 - [ ] globbing
+
+#### dream
+- [ ] job control
 - [ ] variable and env var
 - [ ] subshell
-- [ ] control structure
-- [ ] history arrow key keybind
