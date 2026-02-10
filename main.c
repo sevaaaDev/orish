@@ -142,10 +142,10 @@ struct Parser_Status {
     struct Token *tok;
 };
 
-/* TODO: add second lookahead */
 struct Parser {
     struct Lexer *l;
     struct Token *lookahead;
+    struct Token *lookahead_2;
 };
 
 struct Parser 
@@ -153,24 +153,32 @@ parser_new(struct Lexer *l) {
     struct Parser p;
     p.l = l;
     p.lookahead = NULL;
+    p.lookahead_2 = NULL;
     return p;
 }
 
-/* TODO: add second lookahead peek */
 const struct Token *
 peek_token(struct Parser *p) {
     if (p->lookahead == NULL)
         p->lookahead = lex_scan(p->l);
     return p->lookahead;
 }
+const struct Token *
+peek_token_2(struct Parser *p) {
+    if (p->lookahead_2 == NULL)
+        p->lookahead_2 = lex_scan(p->l);
+    return p->lookahead_2;
+}
 
-/* TODO: consume first lookahead, then move the second lookahead to the first */
 struct Token *
 consume_token(struct Parser *p) {
-    if (p->lookahead == NULL)
+    if (!p->lookahead) { 
+        assert(!p->lookahead_2);
         p->lookahead = lex_scan(p->l);
+    }
     struct Token *tok = p->lookahead;
-    p->lookahead = NULL;
+    p->lookahead = p->lookahead_2;
+    p->lookahead_2 = NULL;
     return tok;
 }
 
