@@ -5,3 +5,6 @@ orish: main.c
 
 debug: main.c
 	$(CC) $(CFLAGS) -g main.c -o debug
+
+clean:
+	rm -f orish debug
