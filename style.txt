@@ -1,13 +1,23 @@
-typedef struct PascalCase {
-    ...
-} PascalCase;
+struct Foo_Bar {
+    int value;
+};
+enum Bar_Foo {
+    BAR_FOO_value;
+    BAR_FOO_value_2;
+};
 
-enum CAPITAL_SNAKE_CASE {
-    CAPITAL_SNAKE_CASE_name1,
-    CAPITAL_SNAKE_CASE_name2,
+void // this make grep '^func' = func definition
+func_with_multi_word(struct Foo_Bar *foo) {
+    int my_num = 2;
+    int my_num_2 = 5;
+    if (my_num > my_num_2) int favor_oneline = 3;
+    if (my_num > my_num_2) 
+        int or_indent_if_too_long = 3;
+    if (my_num > my_num_2) { 
+        struct Foo_Bar must_braces_if_inside_also_braces = {
+            .value = 3;
+        };
+    }
 }
-
-Type
-func_name() {}
 
 /* indent=4space */
