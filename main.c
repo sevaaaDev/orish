@@ -8,6 +8,7 @@
 #define ARENA_IMPLEMENTATION
 #include "arena.h"
 
+/* ===== lexer ===== */
 struct Lexer {
     const char *buf_start;
     const char *cur;
@@ -25,9 +26,17 @@ lex_new(const char *input) {
     return l;
 }
 
+/* these are generic token, you must use TODO: lex_classify_reserved() to determine the specific token.
+ * all reserved word is also a normal word, this mean you can use TOKEN_reserved
+ * in the place of normal word.
+ * 
+ * TOKEN_reserved can only be converted to specific reserved word if and only if it was preceeded by
+ * TOKEN_separator or linebreak, else it is treated as normal word.
+ * */
 enum Token_Type {
+    TOKEN_separator,
     TOKEN_word,
-    TOKEN_separator
+    TOKEN_reserved,
 };
 
 struct Token {
@@ -90,6 +99,7 @@ lex_classify_word(enum Token_Type type, const struct Token *tok) {
     }
 }
 
+/* ===== parser ===== */
 enum Ast_Type {
     AST_TYPE_list,
     AST_TYPE_cmd,
@@ -191,7 +201,9 @@ parse_simple_command(Arena *arena, struct Parser *p, struct Ast_Node **out) {
     }
     struct Ast_Node *node = make_node(arena, AST_TYPE_cmd, NULL);
     do {
-        arena_da_append(arena, &node->children, make_node(arena, AST_TYPE_cmd_word, consume_token(arena, p)));
+        struct Token *tok = consume_token(arena, p);
+        struct Ast_Node *arg_node = make_node(arena, AST_TYPE_cmd_word, tok);
+        arena_da_append(arena, &node->children, arg_node);
     } while(peek_token(arena, p) && lex_classify_word(TOKEN_word, peek_token(arena, p)));
     *out = node;
     return (struct Parser_Status) {
@@ -199,7 +211,6 @@ parse_simple_command(Arena *arena, struct Parser *p, struct Ast_Node **out) {
     };
 }
 
-/* TODO: use second lookahead to match grammar */
 struct Parser_Status
 parse_list(Arena *arena, struct Parser *p, struct Ast_Node **out) {
     *out = NULL;
@@ -209,8 +220,10 @@ parse_list(Arena *arena, struct Parser *p, struct Ast_Node **out) {
     struct Ast_Node *node = make_node(arena, AST_TYPE_list, NULL);
     arena_da_append(arena, &node->children, cmd);
     *out = node;
-    while(peek_token(arena, p) && peek_token(arena, p)->type == TOKEN_separator) {  
-        consume_token(arena, p);
+    while(peek_token(arena, p) && peek_token_2(arena, p)) {  
+        if (peek_token(arena, p)->type != TOKEN_separator) break;
+        if (peek_token_2(arena, p)->type == TOKEN_reserved) break;
+        consume_token(arena, p);                                            // consume the semicolon
         struct Parser_Status err = parse_simple_command(arena, p, &cmd);
         if (err.kind) return err;
         arena_da_append(arena, &node->children, cmd);
@@ -220,7 +233,32 @@ parse_list(Arena *arena, struct Parser *p, struct Ast_Node **out) {
     };
 }
 
+struct Parser_Status
+parse_complete_cmd(Arena *arena, struct Parser *p, struct Ast_Node **out) {
+    *out = NULL;
+    struct Ast_Node *list; 
+    struct Parser_Status err = parse_list(arena, p, &list);
+    if (err.kind) return err;
+    if (peek_token(arena, p) && peek_token(arena, p)->type != TOKEN_separator) {
+       return (struct Parser_Status){
+            .kind = PARSER_STAT_KIND_unexpected_token,
+            .tok = consume_token(arena, p),
+        };
+    }
+    consume_token(arena, p);
+    if (peek_token_2(arena, p)) {
+       return (struct Parser_Status){
+            .kind = PARSER_STAT_KIND_unexpected_token,
+            .tok = consume_token(arena, p),
+        };
+    }
+    *out = list;
+    return (struct Parser_Status) {
+        .kind = PARSER_STAT_KIND_success,
+    };
+}
 
+/* ===== exec ===== */
 void
 exec_cmd(struct Ast_Node *root) {
     if (root->type != AST_TYPE_cmd) return;
@@ -273,7 +311,7 @@ main(int argc, char **argv) {
     struct Lexer lexer = lex_new(commands);
     struct Parser parser = parser_new(&lexer);
     struct Ast_Node *root;
-    struct Parser_Status stat = parse_list(&main_arena, &parser, &root);
+    struct Parser_Status stat = parse_complete_cmd(&main_arena, &parser, &root);
     if (stat.kind) {
         ret = 3;
         goto quit;
