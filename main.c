@@ -8,14 +8,6 @@
 #define ARENA_IMPLEMENTATION
 #include "arena.h"
 
-/* TODO: should arena be global? */
-static Arena main_arena = {0};
-static Arena *context_arena = &main_arena;
-void *main_alloc(size_t size) {
-    assert(context_arena);
-    return arena_alloc(context_arena, size);
-}
-
 struct Lexer {
     const char *buf_start;
     const char *cur;
@@ -44,8 +36,8 @@ struct Token {
 }; 
 
 struct Token *
-make_token(enum Token_Type t, char *value) {
-    struct Token *tok = arena_alloc(context_arena, sizeof(struct Token));
+make_token(Arena *arena, enum Token_Type t, char *value) {
+    struct Token *tok = arena_alloc(arena, sizeof(struct Token));
     if (!tok) {
         printf("arena_alloc error");
         exit(1);
@@ -55,28 +47,28 @@ make_token(enum Token_Type t, char *value) {
     return tok;
 }
 
-char *arena_strndup(const char *src, size_t len) {
-    char *str = arena_alloc(context_arena, len+1);
+char *arena_strndup(Arena *arena, const char *src, size_t len) {
+    char *str = arena_alloc(arena, len+1);
     strncpy(str, src, len);
     str[len] = '\0';
     return str;
 }
 
 struct Token *
-lex_scan(struct Lexer *l) {
+lex_scan(Arena *arena, struct Lexer *l) {
     while (*(l->cur) != '\0') {
         const char *start = l->cur++;
         switch (*start) {
         case ' ':
             break;
         case ';':
-            return make_token(TOKEN_separator, arena_strndup(start, l->cur - start));
+            return make_token(arena, TOKEN_separator, arena_strndup(arena, start, l->cur - start));
             break;
         default: 
             while (*(l->cur) != ';' && *(l->cur) != '\0' && *(l->cur) != ' ') l->cur++;
             int len = l->cur - start;  
-            char *cmd = arena_strndup(start, len);
-            return make_token(TOKEN_word, cmd);
+            char *cmd = arena_strndup(arena, start, len);
+            return make_token(arena, TOKEN_word, cmd);
         }
     }
     return NULL;
@@ -117,8 +109,8 @@ struct Ast_Node {
 };
 
 struct Ast_Node *
-make_node(enum Ast_Type t, struct Token *tok) {
-    struct Ast_Node *node = arena_alloc(context_arena, sizeof(struct Ast_Node));
+make_node(Arena *arena, enum Ast_Type t, struct Token *tok) {
+    struct Ast_Node *node = arena_alloc(arena, sizeof(struct Ast_Node));
     node->type = t; 
     node->token = tok; 
     node->children = (struct Array_Ast_Node){0};
@@ -158,23 +150,23 @@ parser_new(struct Lexer *l) {
 }
 
 const struct Token *
-peek_token(struct Parser *p) {
+peek_token(Arena *arena, struct Parser *p) {
     if (p->lookahead == NULL)
-        p->lookahead = lex_scan(p->l);
+        p->lookahead = lex_scan(arena, p->l);
     return p->lookahead;
 }
 const struct Token *
-peek_token_2(struct Parser *p) {
+peek_token_2(Arena *arena, struct Parser *p) {
     if (p->lookahead_2 == NULL)
-        p->lookahead_2 = lex_scan(p->l);
+        p->lookahead_2 = lex_scan(arena, p->l);
     return p->lookahead_2;
 }
 
 struct Token *
-consume_token(struct Parser *p) {
+consume_token(Arena *arena, struct Parser *p) {
     if (!p->lookahead) { 
         assert(!p->lookahead_2);
-        p->lookahead = lex_scan(p->l);
+        p->lookahead = lex_scan(arena, p->l);
     }
     struct Token *tok = p->lookahead;
     p->lookahead = p->lookahead_2;
@@ -184,23 +176,23 @@ consume_token(struct Parser *p) {
 
 /* TODO: overhaul error handling */
 struct Parser_Status
-parse_simple_command(struct Parser *p, struct Ast_Node **out) {
-    if (!peek_token(p)) {
+parse_simple_command(Arena *arena, struct Parser *p, struct Ast_Node **out) {
+    if (!peek_token(arena, p)) {
        return (struct Parser_Status){
             .kind = PARSER_STAT_KIND_missing_token,
-            .tok = consume_token(p),
+            .tok = consume_token(arena, p),
         };
     }
-    if (!lex_classify_word(TOKEN_word, peek_token(p))) {
+    if (!lex_classify_word(TOKEN_word, peek_token(arena, p))) {
        return (struct Parser_Status){
             .kind = PARSER_STAT_KIND_unexpected_token,
-            .tok = consume_token(p),
+            .tok = consume_token(arena, p),
         };
     }
-    struct Ast_Node *node = make_node(AST_TYPE_cmd, NULL);
+    struct Ast_Node *node = make_node(arena, AST_TYPE_cmd, NULL);
     do {
-        arena_da_append(context_arena, &node->children, make_node(AST_TYPE_cmd_word, consume_token(p)));
-    } while(peek_token(p) && lex_classify_word(TOKEN_word, peek_token(p)));
+        arena_da_append(arena, &node->children, make_node(arena, AST_TYPE_cmd_word, consume_token(arena, p)));
+    } while(peek_token(arena, p) && lex_classify_word(TOKEN_word, peek_token(arena, p)));
     *out = node;
     return (struct Parser_Status) {
         .kind = PARSER_STAT_KIND_success,
@@ -209,19 +201,19 @@ parse_simple_command(struct Parser *p, struct Ast_Node **out) {
 
 /* TODO: use second lookahead to match grammar */
 struct Parser_Status
-parse_list(struct Parser *p, struct Ast_Node **out) {
+parse_list(Arena *arena, struct Parser *p, struct Ast_Node **out) {
     *out = NULL;
     struct Ast_Node *cmd; 
-    struct Parser_Status err = parse_simple_command(p, &cmd);
+    struct Parser_Status err = parse_simple_command(arena, p, &cmd);
     if (err.kind) return err;
-    struct Ast_Node *node = make_node(AST_TYPE_list, NULL);
-    arena_da_append(context_arena, &node->children, cmd);
+    struct Ast_Node *node = make_node(arena, AST_TYPE_list, NULL);
+    arena_da_append(arena, &node->children, cmd);
     *out = node;
-    while(peek_token(p) && peek_token(p)->type == TOKEN_separator) {  
-        consume_token(p);
-        struct Parser_Status err = parse_simple_command(p, &cmd);
+    while(peek_token(arena, p) && peek_token(arena, p)->type == TOKEN_separator) {  
+        consume_token(arena, p);
+        struct Parser_Status err = parse_simple_command(arena, p, &cmd);
         if (err.kind) return err;
-        arena_da_append(context_arena, &node->children, cmd);
+        arena_da_append(arena, &node->children, cmd);
     }
     return (struct Parser_Status) {
         .kind = PARSER_STAT_KIND_success,
@@ -277,10 +269,11 @@ main(int argc, char **argv) {
     /* TODO: read input from file */
     /* TODO: read input from stdin */
     char *commands = argv[1];
+    Arena main_arena = {0};
     struct Lexer lexer = lex_new(commands);
     struct Parser parser = parser_new(&lexer);
     struct Ast_Node *root;
-    struct Parser_Status stat = parse_list(&parser, &root);
+    struct Parser_Status stat = parse_list(&main_arena, &parser, &root);
     if (stat.kind) {
         ret = 3;
         goto quit;
@@ -288,6 +281,6 @@ main(int argc, char **argv) {
     exec_prog(root);
 
 quit:
-    arena_free(context_arena);
+    arena_free(&main_arena);
     return ret;
 }
