@@ -17,7 +17,7 @@ struct Lexer {
 };
 
 struct Lexer 
-lex_new(const char *input) {
+lexer_new(const char *input) {
     struct Lexer l;
     l.buf_start = input;
     l.cur = input;
@@ -26,7 +26,7 @@ lex_new(const char *input) {
     return l;
 }
 
-/* these are generic token, you must use TODO: lex_classify_reserved() to determine the specific token.
+/* these are generic token, you must use TODO: lexer_classify_reserved() to determine the specific token.
  * all reserved word is also a normal word, this mean you can use TOKEN_reserved
  * in the place of normal word.
  * 
@@ -65,7 +65,7 @@ char *arena_strndup(Arena *arena, const char *src, size_t len) {
 
 /* handle reading from file (handle newline) */
 struct Token *
-lex_scan(Arena *arena, struct Lexer *l) {
+lexer_scan(Arena *arena, struct Lexer *l) {
     while (*(l->cur) != '\0') {
         const char *start = l->cur++;
         switch (*start) {
@@ -94,7 +94,7 @@ lex_scan(Arena *arena, struct Lexer *l) {
  *    - lexer_token_allow_reclassify
  * */
 bool
-lex_classify_word(enum Token_Type type, const struct Token *tok) {
+lexer_classify_word(enum Token_Type type, const struct Token *tok) {
     if (tok->type != TOKEN_word) return false;
     switch (type) {
     case TOKEN_word:
@@ -167,13 +167,13 @@ parser_new(struct Lexer *l) {
 const struct Token *
 peek_token(Arena *arena, struct Parser *p) {
     if (p->lookahead == NULL)
-        p->lookahead = lex_scan(arena, p->l);
+        p->lookahead = lexer_scan(arena, p->l);
     return p->lookahead;
 }
 const struct Token *
 peek_token_2(Arena *arena, struct Parser *p) {
     if (p->lookahead_2 == NULL)
-        p->lookahead_2 = lex_scan(arena, p->l);
+        p->lookahead_2 = lexer_scan(arena, p->l);
     return p->lookahead_2;
 }
 
@@ -181,7 +181,7 @@ struct Token *
 consume_token(Arena *arena, struct Parser *p) {
     if (!p->lookahead) { 
         assert(!p->lookahead_2);
-        p->lookahead = lex_scan(arena, p->l);
+        p->lookahead = lexer_scan(arena, p->l);
     }
     struct Token *tok = p->lookahead;
     p->lookahead = p->lookahead_2;
@@ -198,7 +198,7 @@ parse_simple_command(Arena *arena, struct Parser *p, struct Ast_Node **out) {
             .tok = consume_token(arena, p),
         };
     }
-    if (!lex_classify_word(TOKEN_word, peek_token(arena, p))) {
+    if (!lexer_classify_word(TOKEN_word, peek_token(arena, p))) {
        return (struct Parser_Status){
             .kind = PARSER_STAT_KIND_unexpected_token,
             .tok = consume_token(arena, p),
@@ -209,7 +209,7 @@ parse_simple_command(Arena *arena, struct Parser *p, struct Ast_Node **out) {
         struct Token *tok = consume_token(arena, p);
         struct Ast_Node *arg_node = make_node(arena, AST_TYPE_cmd_word, tok);
         arena_da_append(arena, &node->children, arg_node);
-    } while(peek_token(arena, p) && lex_classify_word(TOKEN_word, peek_token(arena, p)));
+    } while(peek_token(arena, p) && lexer_classify_word(TOKEN_word, peek_token(arena, p)));
     *out = node;
     return (struct Parser_Status) {
         .kind = PARSER_STAT_KIND_success,
@@ -315,7 +315,7 @@ main(int argc, char **argv) {
     if (!interactive) {
         char *commands = argv[1];
         Arena main_arena = {0};
-        struct Lexer lexer = lex_new(commands);
+        struct Lexer lexer = lexer_new(commands);
         struct Parser parser = parser_new(&lexer);
         struct Ast_Node *root;
         struct Parser_Status stat = parse_complete_cmd(&main_arena, &parser, &root);
@@ -336,7 +336,7 @@ main(int argc, char **argv) {
         printf("orish> ");
         fgets(commands, len, stdin);
         Arena main_arena = {0};
-        struct Lexer lexer = lex_new(commands);
+        struct Lexer lexer = lexer_new(commands);
         struct Parser parser = parser_new(&lexer);
         struct Ast_Node *root;
         struct Parser_Status stat = parse_complete_cmd(&main_arena, &parser, &root);
