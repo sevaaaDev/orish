@@ -63,18 +63,23 @@ char *arena_strndup(Arena *arena, const char *src, size_t len) {
     return str;
 }
 
+/* handle reading from file (handle newline) */
 struct Token *
 lex_scan(Arena *arena, struct Lexer *l) {
     while (*(l->cur) != '\0') {
         const char *start = l->cur++;
         switch (*start) {
         case ' ':
+        case '\n':
             break;
         case ';':
             return make_token(arena, TOKEN_separator, arena_strndup(arena, start, l->cur - start));
             break;
         default: 
-            while (*(l->cur) != ';' && *(l->cur) != '\0' && *(l->cur) != ' ') l->cur++;
+            while (*(l->cur) != ';' 
+                && *(l->cur) != '\0' 
+                && *(l->cur) != ' ' 
+                && *(l->cur) != '\n') l->cur++;
             int len = l->cur - start;  
             char *cmd = arena_strndup(arena, start, len);
             return make_token(arena, TOKEN_word, cmd);
@@ -297,28 +302,54 @@ exec_prog(struct Ast_Node *root) {
     }
 }
 
+
 int
 main(int argc, char **argv) {
     int ret = 0;
+    bool interactive = false;
     if (argc == 1) {
-        ret = 1; 
-        goto quit;
+        interactive = true; 
     }
     /* TODO: read input from file */
     /* TODO: read input from stdin */
-    char *commands = argv[1];
-    Arena main_arena = {0};
-    struct Lexer lexer = lex_new(commands);
-    struct Parser parser = parser_new(&lexer);
-    struct Ast_Node *root;
-    struct Parser_Status stat = parse_complete_cmd(&main_arena, &parser, &root);
-    if (stat.kind) {
-        ret = 3;
-        goto quit;
-    }
-    exec_prog(root);
+    if (!interactive) {
+        char *commands = argv[1];
+        Arena main_arena = {0};
+        struct Lexer lexer = lex_new(commands);
+        struct Parser parser = parser_new(&lexer);
+        struct Ast_Node *root;
+        struct Parser_Status stat = parse_complete_cmd(&main_arena, &parser, &root);
+        if (stat.kind) {
+            ret = 3;
+            goto quit;
+        }
+        exec_prog(root);
 
-quit:
-    arena_free(&main_arena);
+    quit:
+        arena_free(&main_arena);
+        arena_free(&input_arena);
+    }
+    /* TODO: extract to eval function */
+    while (interactive) {
+        Arena input_arena = {0};
+        int len = 1024;
+        char *commands = arena_alloc(&input_arena, len);
+        printf("orish> ");
+        fgets(commands, len, stdin);
+        Arena main_arena = {0};
+        struct Lexer lexer = lex_new(commands);
+        struct Parser parser = parser_new(&lexer);
+        struct Ast_Node *root;
+        struct Parser_Status stat = parse_complete_cmd(&main_arena, &parser, &root);
+        if (stat.kind) {
+            ret = 3;
+            goto quit;
+        }
+        exec_prog(root);
+
+    quit:
+        arena_free(&main_arena);
+        arena_free(&input_arena);
+    }
     return ret;
 }
