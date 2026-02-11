@@ -327,7 +327,6 @@ main(int argc, char **argv) {
 
     quit:
         arena_free(&main_arena);
-        arena_free(&input_arena);
     }
     /* TODO: extract to eval function */
     while (interactive) {
