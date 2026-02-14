@@ -22,19 +22,21 @@ example:
 
 ## Roadmap
 
-### Version: get it work
+### Version: bare minimum
 - [x] command list (;)
-- [ ] command piping
-- [ ] conditional using and (&&) or (||)
+- [x] basic interactive mode
+- [ ] basic scripting mode
 
 ### Version: usable
-- [ ] readline
-- [ ] read from file
+- [ ] quotes and escape
+- [ ] command piping
+- [ ] conditional using and (&&) or (||)
+- [ ] readline with history
 
 ### Version: qol
-- [ ] quotes and escape
 - [ ] redirection (> >> < <<)
 - [ ] globbing
+- [ ] readline with keybinding
 
 #### Version: dream
 - [ ] job control
