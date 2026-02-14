@@ -304,6 +304,7 @@ enum Error_Kind {
     Parser_Err,
     Runtime_Err,
 };
+
 typedef struct Error {
     enum Error_Kind kind;
     union {
@@ -340,7 +341,6 @@ main(int argc, char **argv) {
         interactive = true; 
     }
     /* TODO: read input from file */
-    /* TODO: read input from stdin */
     Arena main_arena = {0};
     if (!interactive) {
         char *commands = argv[1];
@@ -352,6 +352,7 @@ main(int argc, char **argv) {
 
     }
     bool running = true;
+    /* TODO: handle parser error */
     while (interactive && running) {
         printf("orish> ");
         char *commands = NULL;
@@ -363,13 +364,12 @@ main(int argc, char **argv) {
         };
         if (ggets_err) exit(34);
         Error err = orish_eval(&main_arena, commands);
-        if (err.kind) {
-            ret = 3;
-            goto clear_input;
-        }
-
-    clear_input:
         free(commands);
+        /* TODO: implement "exit" builtin command */
+        if (err.kind == Runtime_Err) {
+            ret = 3;
+            goto quit;
+        }
     }
     quit:
         arena_free(&main_arena);
