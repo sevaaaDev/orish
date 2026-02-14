@@ -139,15 +139,25 @@ enum Parser_Stat_Kind {
 };
 
 static const char *PARSER_ERROR_TABLE[] = {
-    [PARSER_STAT_KIND_success] = "Success",
     [PARSER_STAT_KIND_unexpected_token] = "Unexpected token: %s",
-    [PARSER_STAT_KIND_missing_token] = "Missing token: %s",
 };
 
-struct Parser_Status {
+typedef struct Parser_Error {
     enum Parser_Stat_Kind kind;
-    struct Token *tok;
-};
+    struct Token *tok_gotten;
+    const char *got;
+    const char *expect;
+} Parser_Error;
+
+Parser_Error *
+make_parser_error(Arena *arena, struct Token *tok, const char *got, const char* expect) {
+    Parser_Error *err = arena_alloc(arena, sizeof(Parser_Error));
+    err->tok_gotten = tok;
+    err->got = got;
+    err->expect = expect;
+    err->kind = 0;
+    return err;
+}
 
 struct Parser {
     struct Lexer *l;
@@ -190,19 +200,14 @@ consume_token(Arena *arena, struct Parser *p) {
 }
 
 /* TODO: overhaul error handling */
-struct Parser_Status
+Parser_Error *
 parse_simple_command(Arena *arena, struct Parser *p, struct Ast_Node **out) {
     if (!peek_token(arena, p)) {
-       return (struct Parser_Status){
-            .kind = PARSER_STAT_KIND_missing_token,
-            .tok = consume_token(arena, p),
-        };
+       return make_parser_error(arena, consume_token(arena, p), "", "string");
     }
     if (!lexer_classify_word(TOKEN_word, peek_token(arena, p))) {
-       return (struct Parser_Status){
-            .kind = PARSER_STAT_KIND_unexpected_token,
-            .tok = consume_token(arena, p),
-        };
+       struct Token *got = consume_token(arena, p);
+       return make_parser_error(arena, got, got->value, "command");
     }
     struct Ast_Node *node = make_node(arena, AST_TYPE_cmd, NULL);
     do {
@@ -211,17 +216,15 @@ parse_simple_command(Arena *arena, struct Parser *p, struct Ast_Node **out) {
         arena_da_append(arena, &node->children, arg_node);
     } while(peek_token(arena, p) && lexer_classify_word(TOKEN_word, peek_token(arena, p)));
     *out = node;
-    return (struct Parser_Status) {
-        .kind = PARSER_STAT_KIND_success,
-    };
+    return NULL;
 }
 
-struct Parser_Status
+Parser_Error *
 parse_list(Arena *arena, struct Parser *p, struct Ast_Node **out) {
     *out = NULL;
     struct Ast_Node *cmd; 
-    struct Parser_Status err = parse_simple_command(arena, p, &cmd);
-    if (err.kind) return err;
+    Parser_Error *err = parse_simple_command(arena, p, &cmd);
+    if (err) return err;
     struct Ast_Node *node = make_node(arena, AST_TYPE_list, NULL);
     arena_da_append(arena, &node->children, cmd);
     *out = node;
@@ -229,38 +232,30 @@ parse_list(Arena *arena, struct Parser *p, struct Ast_Node **out) {
         if (peek_token(arena, p)->type != TOKEN_separator) break;
         if (peek_token_2(arena, p)->type == TOKEN_reserved) break;
         consume_token(arena, p);                                            // consume the semicolon
-        struct Parser_Status err = parse_simple_command(arena, p, &cmd);
-        if (err.kind) return err;
+        Parser_Error *err = parse_simple_command(arena, p, &cmd);
+        if (err) return err;
         arena_da_append(arena, &node->children, cmd);
     }
-    return (struct Parser_Status) {
-        .kind = PARSER_STAT_KIND_success,
-    };
+    return NULL;
 }
 
-struct Parser_Status
+Parser_Error *
 parse_complete_cmd(Arena *arena, struct Parser *p, struct Ast_Node **out) {
     *out = NULL;
     struct Ast_Node *list; 
-    struct Parser_Status err = parse_list(arena, p, &list);
-    if (err.kind) return err;
+    Parser_Error *err = parse_list(arena, p, &list);
+    if (err) return err;
     if (peek_token(arena, p) && peek_token(arena, p)->type != TOKEN_separator) {
-       return (struct Parser_Status){
-            .kind = PARSER_STAT_KIND_unexpected_token,
-            .tok = consume_token(arena, p),
-        };
+       struct Token *got = consume_token(arena, p);
+       return make_parser_error(arena, got, got->value, ";");
     }
     consume_token(arena, p);
     if (peek_token_2(arena, p)) {
-       return (struct Parser_Status){
-            .kind = PARSER_STAT_KIND_unexpected_token,
-            .tok = consume_token(arena, p),
-        };
+       struct Token *got = consume_token(arena, p);
+       return make_parser_error(arena, got, got->value, "");
     }
     *out = list;
-    return (struct Parser_Status) {
-        .kind = PARSER_STAT_KIND_success,
-    };
+    return NULL;
 }
 
 /* ===== exec ===== */
@@ -303,6 +298,40 @@ exec_prog(struct Ast_Node *root) {
 }
 
 
+/* ===== orish ===== */
+enum Error_Kind {
+    Success,
+    Parser_Err,
+    Runtime_Err,
+};
+typedef struct Error {
+    enum Error_Kind kind;
+    union {
+        Parser_Error *parser;
+    } data;
+} Error;  
+
+Error
+orish_eval(Arena *arena, const char *input) {
+    struct Lexer lexer = lexer_new(input);
+    struct Parser parser = parser_new(&lexer);
+    struct Ast_Node *root;
+    Parser_Error *err = parse_complete_cmd(arena, &parser, &root);
+    if (err) {
+        return (Error){
+            .kind = Parser_Err,
+            .data.parser = err,
+        };
+    }
+    exec_prog(root);
+    return (Error){
+        .kind = Success,
+    };
+}
+
+#define GGETS_IMPLEMENTATION
+#include "ggets.h"
+
 int
 main(int argc, char **argv) {
     int ret = 0;
@@ -312,43 +341,37 @@ main(int argc, char **argv) {
     }
     /* TODO: read input from file */
     /* TODO: read input from stdin */
+    Arena main_arena = {0};
     if (!interactive) {
         char *commands = argv[1];
-        Arena main_arena = {0};
-        struct Lexer lexer = lexer_new(commands);
-        struct Parser parser = parser_new(&lexer);
-        struct Ast_Node *root;
-        struct Parser_Status stat = parse_complete_cmd(&main_arena, &parser, &root);
-        if (stat.kind) {
+        Error err = orish_eval(&main_arena, commands);
+        if (err.kind) {
             ret = 3;
             goto quit;
         }
-        exec_prog(root);
 
-    quit:
-        arena_free(&main_arena);
     }
-    /* TODO: extract to eval function */
-    while (interactive) {
-        Arena input_arena = {0};
-        int len = 1024;
-        char *commands = arena_alloc(&input_arena, len);
+    bool running = true;
+    while (interactive && running) {
         printf("orish> ");
-        fgets(commands, len, stdin);
-        Arena main_arena = {0};
-        struct Lexer lexer = lexer_new(commands);
-        struct Parser parser = parser_new(&lexer);
-        struct Ast_Node *root;
-        struct Parser_Status stat = parse_complete_cmd(&main_arena, &parser, &root);
-        if (stat.kind) {
+        char *commands = NULL;
+        int ggets_err = ggets(&commands);
+        if (ggets_err == EOF) {
+            printf("\nEOF\n");
+            running = false;
+            continue;
+        };
+        if (ggets_err) exit(34);
+        Error err = orish_eval(&main_arena, commands);
+        if (err.kind) {
             ret = 3;
-            goto quit;
+            goto clear_input;
         }
-        exec_prog(root);
 
+    clear_input:
+        free(commands);
+    }
     quit:
         arena_free(&main_arena);
-        arena_free(&input_arena);
-    }
     return ret;
 }
