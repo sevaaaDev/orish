@@ -5,6 +5,9 @@
 #include <assert.h>
 #include <errno.h>
 #include <sys/wait.h>
+#include <sys/stat.h>
+#include <sys/mman.h>
+#include <fcntl.h>
 #define ARENA_IMPLEMENTATION
 #include "arena.h"
 
@@ -333,27 +336,62 @@ orish_eval(Arena *arena, const char *input) {
 #define GGETS_IMPLEMENTATION
 #include "ggets.h"
 
+struct Flags {
+    bool interactive;
+    char *filename;
+    char *cmd_string;
+};
 int
 main(int argc, char **argv) {
+    /* TODO: handle parser error */
     int ret = 0;
-    bool interactive = false;
-    if (argc == 1) {
-        interactive = true; 
+    struct Flags flags = {0};
+    flags.interactive = true;
+    if (argc > 1) {
+        flags.interactive = false;
+        if (strcmp(argv[1], "-c") == 0) {
+            if (argc == 2) return 1;
+            flags.cmd_string = argv[2];
+        } else {
+            flags.filename = argv[1];
+        }
     }
-    /* TODO: read input from file */
     Arena main_arena = {0};
-    if (!interactive) {
-        char *commands = argv[1];
+    if (flags.cmd_string) {
+        char *commands = flags.cmd_string;
         Error err = orish_eval(&main_arena, commands);
         if (err.kind) {
             ret = 3;
-            goto quit;
+            goto quit_no_cleanup;
         }
-
+    }
+    if (flags.filename) {
+        int fd = open(flags.filename, O_RDONLY);
+        if (fd <= -1) {
+            printf("%s: internal error: %s\n", argv[0], strerror(errno));
+            ret = 2;
+            goto quit_no_cleanup;
+        }
+        struct stat stat;
+        fstat(fd, &stat);
+        char *commands = mmap(NULL, stat.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+        close(fd);
+        if (commands == MAP_FAILED) {
+            printf("%s: internal error: %s\n", argv[0], strerror(errno));
+            ret = 2;
+            goto quit_no_cleanup;
+        }
+        Error err = orish_eval(&main_arena, commands);
+        if (err.kind) {
+            ret = 3;
+            if (munmap(commands, stat.st_size) <= -1) {
+                printf("%s: internal error %s\n", argv[0], strerror(errno));
+            }
+            goto cleanup;
+        }
     }
     bool running = true;
-    /* TODO: handle parser error */
-    while (interactive && running) {
+    while (flags.interactive && running) {
         printf("orish> ");
         char *commands = NULL;
         int ggets_err = ggets(&commands);
@@ -371,7 +409,10 @@ main(int argc, char **argv) {
             goto quit;
         }
     }
+    // TODO: remove quit jump
     quit:
+    cleanup:
         arena_free(&main_arena);
+    quit_no_cleanup:
     return ret;
 }
