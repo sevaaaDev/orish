@@ -38,6 +38,7 @@ lexer_new(const char *input) {
  * */
 enum Token_Type {
     TOKEN_separator,
+    TOKEN_linebreak,
     TOKEN_word,
     TOKEN_reserved,
 };
@@ -73,16 +74,26 @@ lexer_scan(Arena *arena, struct Lexer *l) {
         const char *start = l->cur++;
         switch (*start) {
         case ' ':
-        case '\n':
             break;
         case ';':
             return make_token(arena, TOKEN_separator, arena_strndup(arena, start, l->cur - start));
             break;
+        case '\n':
+            l->cur_line++;
+            l->last_newline = l->cur;
+            while (*(l->cur) == '\n' || *(l->cur) == ' ') {
+                if (*(l->cur) == '\n') {
+                    l->cur_line++;
+                    l->last_newline = l->cur;
+                }
+                l->cur++;
+            }
+            return make_token(arena, TOKEN_linebreak, NULL);
         default: 
             while (*(l->cur) != ';' 
                 && *(l->cur) != '\0' 
-                && *(l->cur) != ' ' 
-                && *(l->cur) != '\n') l->cur++;
+                && *(l->cur) != '\n' 
+                && *(l->cur) != ' ') l->cur++;
             int len = l->cur - start;  
             char *cmd = arena_strndup(arena, start, len);
             return make_token(arena, TOKEN_word, cmd);
@@ -109,6 +120,7 @@ lexer_classify_word(enum Token_Type type, const struct Token *tok) {
 
 /* ===== parser ===== */
 enum Ast_Type {
+    AST_TYPE_program,
     AST_TYPE_list,
     AST_TYPE_cmd,
     AST_TYPE_cmd_word,
@@ -136,7 +148,6 @@ make_node(Arena *arena, enum Ast_Type t, struct Token *tok) {
 }
 
 enum Parser_Stat_Kind {
-    PARSER_STAT_KIND_success,
     PARSER_STAT_KIND_unexpected_token,
     PARSER_STAT_KIND_missing_token,
 };
@@ -233,7 +244,7 @@ parse_list(Arena *arena, struct Parser *p, struct Ast_Node **out) {
     *out = node;
     while(peek_token(arena, p) && peek_token_2(arena, p)) {  
         if (peek_token(arena, p)->type != TOKEN_separator) break;
-        if (peek_token_2(arena, p)->type == TOKEN_reserved) break;
+        if (peek_token_2(arena, p)->type != TOKEN_word) break;
         consume_token(arena, p);                                            // consume the semicolon
         Parser_Error *err = parse_simple_command(arena, p, &cmd);
         if (err) return err;
@@ -248,16 +259,28 @@ parse_complete_cmd(Arena *arena, struct Parser *p, struct Ast_Node **out) {
     struct Ast_Node *list; 
     Parser_Error *err = parse_list(arena, p, &list);
     if (err) return err;
-    if (peek_token(arena, p) && peek_token(arena, p)->type != TOKEN_separator) {
-       struct Token *got = consume_token(arena, p);
-       return make_parser_error(arena, got, got->value, ";");
-    }
-    consume_token(arena, p);
-    if (peek_token_2(arena, p)) {
-       struct Token *got = consume_token(arena, p);
-       return make_parser_error(arena, got, got->value, "");
+    if (peek_token(arena, p) && peek_token(arena, p)->type == TOKEN_separator) {
+        consume_token(arena, p);
     }
     *out = list;
+    return NULL;
+}
+
+struct Parser_Error *
+parse_all_commands(Arena *arena, struct Parser *p, struct Ast_Node **out) {
+    *out = NULL;
+    struct Ast_Node *all_cmds = make_node(arena, AST_TYPE_program, NULL);;
+    if (peek_token(arena, p) && peek_token(arena, p)->type == TOKEN_linebreak)
+        consume_token(arena, p);
+    while (peek_token(arena, p)) {
+        struct Ast_Node *list;
+        Parser_Error *err = parse_complete_cmd(arena, p, &list);
+        if (err) return err;
+        arena_da_append(arena, &all_cmds->children, list);
+        if (peek_token(arena, p) && peek_token(arena, p)->type == TOKEN_linebreak)
+            consume_token(arena, p);
+    }
+    *out = all_cmds;
     return NULL;
 }
 
@@ -286,7 +309,7 @@ exec_cmd(struct Ast_Node *root) {
 }
 
 void
-exec_prog(struct Ast_Node *root) {
+exec_list(struct Ast_Node *root) {
     if (root->type != AST_TYPE_list) return;
     for (size_t i = 0; i < root->children.count; ++i) {
         struct Ast_Node *child = root->children.items[i];
@@ -300,6 +323,15 @@ exec_prog(struct Ast_Node *root) {
     }
 }
 
+void
+exec_prog(struct Ast_Node *root) {
+    if (root->type != AST_TYPE_program) return;
+    for (size_t i = 0; i < root->children.count; ++i) {
+        struct Ast_Node *child = root->children.items[i];
+        if (child->type != AST_TYPE_list) return;
+        exec_list(child);
+    }
+}
 
 /* ===== orish ===== */
 enum Error_Kind {
@@ -320,7 +352,7 @@ orish_eval(Arena *arena, const char *input) {
     struct Lexer lexer = lexer_new(input);
     struct Parser parser = parser_new(&lexer);
     struct Ast_Node *root;
-    Parser_Error *err = parse_complete_cmd(arena, &parser, &root);
+    Parser_Error *err = parse_all_commands(arena, &parser, &root);
     if (err) {
         return (Error){
             .kind = Parser_Err,
@@ -384,6 +416,7 @@ main(int argc, char **argv) {
         Error err = orish_eval(&main_arena, commands);
         if (err.kind) {
             ret = 3;
+            printf("%s\n", err.data.parser->expect);
             if (munmap(commands, stat.st_size) <= -1) {
                 printf("%s: internal error %s\n", argv[0], strerror(errno));
             }
