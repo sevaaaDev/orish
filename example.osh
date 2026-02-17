@@ -1,0 +1,3 @@
+echo end command with semi;
+echo or newline
+echo execute list separated by semi; echo second command
