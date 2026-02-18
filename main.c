@@ -281,6 +281,9 @@ parse_all_commands(Arena *arena, struct Parser *p, struct Ast_Node **out) {
 }
 
 /* ===== exec ===== */
+#include "builtin.h"
+
+
 void
 exec_cmd(struct Ast_Node *root) {
     if (root->type != AST_TYPE_cmd) return;
@@ -292,15 +295,21 @@ exec_cmd(struct Ast_Node *root) {
         struct Ast_Node *child = root->children.items[i];
         argv[i] = child->token->value;
     }
-    pid_t pid = fork();
-    if (pid == -1) return; 
-    if (pid == 0) {
-        if (execvp(argv[0], argv) == -1) {
-            perror(argv[0]);
-            exit(127);
-        } 
+    if (!strcmp(argv[0], "exit")) {
+        orish_builtin_exit(root->children.count, argv);
+    } else if (!strcmp(argv[0], "cd")) {
+        orish_builtin_cd(root->children.count, argv);
     } else {
-        wait(NULL);
+        pid_t pid = fork();
+        if (pid == -1) return; 
+        if (pid == 0) {
+            if (execvp(argv[0], argv) == -1) {
+                perror(argv[0]);
+                exit(127);
+            } 
+        } else {
+            wait(NULL);
+        }
     }
 }
 
