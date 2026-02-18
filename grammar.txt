@@ -1,0 +1,14 @@
+all_commands     = [LINEBREAK], list, { LINEBREAK, list }, [LINEBREAK]
+
+list             = simple_command, { ';', simple_command }, [';']
+
+simple_command   = WORD, { WORD }
+
+
+# notes
+reserved word only recognized after linebreak/separator
+thus in implementation, test for reserved word everytime you found linebreak/separator
+
+this look like an LL(2) in semicolon & linebreak, but in implementation, you can make it LL(1) because those terminal will be consumed (if exist) later anyway, so you can ignore the second lookahead and eat the terminal rightaway
+i actually dont know why this is LL(2). maybe if youre strict enough it is. but we just want it to work
+the ebnf make implementation clearer. but it kinda hide some formal grammar stats
