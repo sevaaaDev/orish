@@ -213,7 +213,6 @@ consume_token(Arena *arena, struct Parser *p) {
     return tok;
 }
 
-/* TODO: overhaul error handling */
 Parser_Error *
 parse_simple_command(Arena *arena, struct Parser *p, struct Ast_Node **out) {
     if (!peek_token(arena, p)) {
@@ -282,7 +281,6 @@ parse_all_commands(Arena *arena, struct Parser *p, struct Ast_Node **out) {
 
 /* ===== exec ===== */
 #include "builtin.h"
-
 
 void
 exec_cmd(struct Ast_Node *root) {
@@ -441,7 +439,6 @@ main(int argc, char **argv) {
         if (ggets_err) exit(34);
         Error err = orish_eval(&main_arena, commands);
         free(commands);
-        /* TODO: implement "exit" builtin command */
         if (err.kind == Runtime_Err) {
             ret = 3;
             goto cleanup;

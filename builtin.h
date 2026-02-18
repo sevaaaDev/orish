@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <limits.h>
 
+// TODO: figure out the api for error handling
 int orish_builtin_exit(int argc, char **argv) {
     int ret = 0;
     if (argc >= 2) {
