@@ -4,6 +4,21 @@ this is a minimal shell written in c based on the [posix sh spec](https://pubs.o
 
 i dont plan to implement all posix features, so this might not be fully posix compliant. the [roadmap](#Roadmap) list all the features i plan to implement.
 
+### Current Features
+- execute list of command (echo hello; echo world)
+- interactive mode with builtin cmd (cd, exit)
+- scripting mode (execute command from file)
+
+### Usage
+```sh
+Usage:   orish
+         orish [-c COMMANDS]
+         orish [FILENAME]
+Example:
+         orish -c "echo hello"
+         orish script.osh
+```
+
 ### Building
 ```sh
 git clone https://github.com/sevaaaDev/orish.git
@@ -12,20 +27,12 @@ make orish
 ./orish # you can move this to $PATH or whatever
 ```
 
-### Usage
-```sh
-orish [command_string]
-example:
-    orish "echo hello"
-    orish "pwd; echo hello"
-```
-
 ## Roadmap
 
 ### Version: bare minimum
 - [x] command list (;)
 - [x] basic interactive mode
-- [ ] basic scripting mode
+- [x] basic scripting mode
 
 ### Version: usable
 - [ ] quotes and escape
