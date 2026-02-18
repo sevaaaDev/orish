@@ -236,20 +236,16 @@ parse_simple_command(Arena *arena, struct Parser *p, struct Ast_Node **out) {
 Parser_Error *
 parse_list(Arena *arena, struct Parser *p, struct Ast_Node **out) {
     *out = NULL;
-    struct Ast_Node *cmd; 
-    Parser_Error *err = parse_simple_command(arena, p, &cmd);
-    if (err) return err;
     struct Ast_Node *node = make_node(arena, AST_TYPE_list, NULL);
-    arena_da_append(arena, &node->children, cmd);
-    *out = node;
-    while(peek_token(arena, p) && peek_token_2(arena, p)) {  
-        if (peek_token(arena, p)->type != TOKEN_separator) break;
-        if (peek_token_2(arena, p)->type != TOKEN_word) break;
-        consume_token(arena, p);                                            // consume the semicolon
+    struct Ast_Node *cmd; 
+    do {
         Parser_Error *err = parse_simple_command(arena, p, &cmd);
         if (err) return err;
         arena_da_append(arena, &node->children, cmd);
-    }
+        if (peek_token(arena, p) && peek_token(arena, p)->type == TOKEN_separator)
+            consume_token(arena, p);
+        *out = node;
+    } while(peek_token(arena, p) && peek_token(arena, p)->type == TOKEN_word);
     return NULL;
 }
 
@@ -439,11 +435,9 @@ main(int argc, char **argv) {
         /* TODO: implement "exit" builtin command */
         if (err.kind == Runtime_Err) {
             ret = 3;
-            goto quit;
+            goto cleanup;
         }
     }
-    // TODO: remove quit jump
-    quit:
     cleanup:
         arena_free(&main_arena);
     quit_no_cleanup:
