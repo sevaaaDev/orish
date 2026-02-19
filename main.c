@@ -43,6 +43,7 @@ enum Token_Type {
     TOKEN_reserved,
 };
 
+// TODO: embed linenum and column to token
 struct Token {
     enum Token_Type type; 
     char *value;
@@ -395,8 +396,9 @@ main(int argc, char **argv) {
     if (flags.cmd_string) {
         char *commands = flags.cmd_string;
         Error err = orish_eval(&main_arena, commands);
-        if (err.kind) {
-            ret = 3;
+        if (err.kind == Parser_Err) {
+            ret = 2;
+            printf("%s: expecting %s, got '%s'\n", argv[0], err.data.parser->expect, err.data.parser->got);
             goto quit_no_cleanup;
         }
     }
@@ -404,7 +406,7 @@ main(int argc, char **argv) {
         int fd = open(flags.filename, O_RDONLY);
         if (fd <= -1) {
             printf("%s: internal error: %s\n", argv[0], strerror(errno));
-            ret = 2;
+            ret = 1;
             goto quit_no_cleanup;
         }
         struct stat stat;
@@ -413,13 +415,15 @@ main(int argc, char **argv) {
         close(fd);
         if (commands == MAP_FAILED) {
             printf("%s: internal error: %s\n", argv[0], strerror(errno));
-            ret = 2;
+            ret = 1;
             goto quit_no_cleanup;
         }
         Error err = orish_eval(&main_arena, commands);
         if (err.kind) {
-            ret = 3;
-            printf("%s\n", err.data.parser->expect);
+            ret = 2;
+            if (err.kind == Parser_Err) {
+                printf("%s: expecting %s, got '%s'\n", argv[0], err.data.parser->expect, err.data.parser->got);
+            }
             if (munmap(commands, stat.st_size) <= -1) {
                 printf("%s: internal error %s\n", argv[0], strerror(errno));
             }
@@ -440,8 +444,11 @@ main(int argc, char **argv) {
         Error err = orish_eval(&main_arena, commands);
         free(commands);
         if (err.kind == Runtime_Err) {
-            ret = 3;
+            ret = 2;
             goto cleanup;
+        }
+        if (err.kind == Parser_Err) {
+            printf("%s: expecting %s, got '%s'\n", argv[0], err.data.parser->expect, err.data.parser->got);
         }
     }
     cleanup:
