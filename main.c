@@ -11,6 +11,9 @@
 #define ARENA_IMPLEMENTATION
 #include "arena.h"
 
+// TODO: split code to different files
+// TODO: add testing
+
 /* ===== lexer ===== */
 struct Lexer {
     const char *buf_start;
@@ -127,7 +130,7 @@ enum Ast_Type {
     AST_TYPE_cmd_word,
 };
 
-struct Array_Ast_Node {
+struct Ast_Node_da {
     size_t capacity;
     size_t count;
     struct Ast_Node **items;
@@ -136,7 +139,7 @@ struct Array_Ast_Node {
 struct Ast_Node {
     enum Ast_Type type;
     const struct Token *token;
-    struct Array_Ast_Node children;
+    struct Ast_Node_da children;
 };
 
 struct Ast_Node *
@@ -151,10 +154,6 @@ make_node(Arena *arena, enum Ast_Type t, struct Token *tok) {
 enum Parser_Stat_Kind {
     PARSER_STAT_KIND_unexpected_token,
     PARSER_STAT_KIND_missing_token,
-};
-
-static const char *PARSER_ERROR_TABLE[] = {
-    [PARSER_STAT_KIND_unexpected_token] = "Unexpected token: %s",
 };
 
 typedef struct Parser_Error {
@@ -262,7 +261,7 @@ parse_complete_cmd(Arena *arena, struct Parser *p, struct Ast_Node **out) {
     return NULL;
 }
 
-struct Parser_Error *
+Parser_Error *
 parse_all_commands(Arena *arena, struct Parser *p, struct Ast_Node **out) {
     *out = NULL;
     struct Ast_Node *all_cmds = make_node(arena, AST_TYPE_program, NULL);;
@@ -357,6 +356,7 @@ enum Error_Kind {
     ERROR_runtime_err,
 };
 
+// TODO: remove this bcs not needed
 typedef struct Error {
     enum Error_Kind kind;
     union {
@@ -390,9 +390,9 @@ struct Flags {
     char *filename;
     char *cmd_string;
 };
+
 int
 main(int argc, char **argv) {
-    /* TODO: handle parser error */
     int ret = 0;
     struct Flags flags = {0};
     flags.interactive = true;
@@ -407,6 +407,7 @@ main(int argc, char **argv) {
     }
     Context ctx = {.prog_name = argv[0]};
     Arena main_arena = {0};
+    // TODO: simplify branch
     if (flags.cmd_string) {
         char *commands = flags.cmd_string;
         Error err = orish_eval(&main_arena, commands, &ctx);
