@@ -434,13 +434,13 @@ main(int argc, char **argv) {
             goto quit_no_cleanup;
         }
         Error err = orish_eval(&main_arena, commands, &ctx);
+        if (munmap(commands, stat.st_size) <= -1) {
+            printf("%s: internal error %s\n", argv[0], strerror(errno));
+        }
         if (err.kind) {
             ret = 2;
             if (err.kind == ERROR_parser_err) {
                 printf("%s: expecting %s, got '%s'\n", argv[0], err.data.parser->expect, err.data.parser->got);
-            }
-            if (munmap(commands, stat.st_size) <= -1) {
-                printf("%s: internal error %s\n", argv[0], strerror(errno));
             }
             goto cleanup;
         }
