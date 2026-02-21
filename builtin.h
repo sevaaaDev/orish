@@ -3,7 +3,6 @@
 #include <stdlib.h>
 #include <limits.h>
 
-// TODO: figure out the api for error handling
 int orish_builtin_exit(int argc, char **argv) {
     int ret = 0;
     if (argc >= 2) {
@@ -16,13 +15,15 @@ int orish_builtin_exit(int argc, char **argv) {
     return ret;
 }
 
-int orish_builtin_cd(int argc, char **argv) {
+int orish_builtin_cd(int argc, char **argv, char *prog) {
     char *path = argv[1];
     if (argc == 1) {
         path = getenv("HOME");
     }
-    if (chdir(path) == -1)
+    if (chdir(path) == -1) {
+        printf("%s: cd: %s\n", prog, strerror(errno));
         return 1;
+    }
     return 0;
 }
 

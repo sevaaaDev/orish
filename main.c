@@ -283,8 +283,19 @@ parse_all_commands(Arena *arena, struct Parser *p, struct Ast_Node **out) {
 /* ===== exec ===== */
 #include "builtin.h"
 
+struct Runtime_Error {
+    int exit_code;
+    char *msg;
+};
+
+// TODO: pass context to exec()
+typedef struct Context {
+    int exit_code;
+    char *prog_name;
+} Context;
+
 void
-exec_cmd(struct Ast_Node *root) {
+exec_cmd(struct Ast_Node *root, Context *ctx) {
     if (root->type != AST_TYPE_cmd) return;
     /* WARN: is empty init equal to zero init? the last elem must be 0 */
     /* WARN: variable size array means we cant do argument expansion,
@@ -295,31 +306,33 @@ exec_cmd(struct Ast_Node *root) {
         argv[i] = child->token->value;
     }
     if (!strcmp(argv[0], "exit")) {
-        orish_builtin_exit(root->children.count, argv);
-    } else if (!strcmp(argv[0], "cd")) {
-        orish_builtin_cd(root->children.count, argv);
-    } else {
-        pid_t pid = fork();
-        if (pid == -1) return; 
-        if (pid == 0) {
-            if (execvp(argv[0], argv) == -1) {
-                perror(argv[0]);
-                exit(127);
-            } 
-        } else {
-            wait(NULL);
-        }
+        ctx->exit_code = orish_builtin_exit(root->children.count, argv);
+        return;
     }
+    if (!strcmp(argv[0], "cd")) {
+        ctx->exit_code = orish_builtin_cd(root->children.count, argv, ctx->prog_name);
+        return;
+    }
+    pid_t pid = fork();
+    if (pid == -1) return; 
+    if (pid == 0) {
+        if (execvp(argv[0], argv) == -1) {
+            perror(argv[0]);
+            exit(127);
+        } 
+    }
+    return;
 }
 
 void
-exec_list(struct Ast_Node *root) {
+exec_list(struct Ast_Node *root, Context *ctx) {
     if (root->type != AST_TYPE_list) return;
     for (size_t i = 0; i < root->children.count; ++i) {
         struct Ast_Node *child = root->children.items[i];
         switch (child->type) {
             case AST_TYPE_cmd:
-                exec_cmd(child);
+                exec_cmd(child, ctx);
+                wait(NULL);
                 break;
             default:
                 assert(0 == "TODO: implement exec non simple cmd");
@@ -328,20 +341,20 @@ exec_list(struct Ast_Node *root) {
 }
 
 void
-exec_prog(struct Ast_Node *root) {
+exec_prog(struct Ast_Node *root, Context *ctx) {
     if (root->type != AST_TYPE_program) return;
     for (size_t i = 0; i < root->children.count; ++i) {
         struct Ast_Node *child = root->children.items[i];
         if (child->type != AST_TYPE_list) return;
-        exec_list(child);
+        exec_list(child, ctx);
     }
 }
 
 /* ===== orish ===== */
 enum Error_Kind {
     Success,
-    Parser_Err,
-    Runtime_Err,
+    ERROR_parser_err,
+    ERROR_runtime_err,
 };
 
 typedef struct Error {
@@ -352,18 +365,18 @@ typedef struct Error {
 } Error;  
 
 Error
-orish_eval(Arena *arena, const char *input) {
+orish_eval(Arena *arena, const char *input, Context *ctx) {
     struct Lexer lexer = lexer_new(input);
     struct Parser parser = parser_new(&lexer);
     struct Ast_Node *root;
     Parser_Error *err = parse_all_commands(arena, &parser, &root);
     if (err) {
         return (Error){
-            .kind = Parser_Err,
+            .kind = ERROR_parser_err,
             .data.parser = err,
         };
     }
-    exec_prog(root);
+    exec_prog(root, ctx);
     return (Error){
         .kind = Success,
     };
@@ -392,11 +405,12 @@ main(int argc, char **argv) {
             flags.filename = argv[1];
         }
     }
+    Context ctx = {.prog_name = argv[0]};
     Arena main_arena = {0};
     if (flags.cmd_string) {
         char *commands = flags.cmd_string;
-        Error err = orish_eval(&main_arena, commands);
-        if (err.kind == Parser_Err) {
+        Error err = orish_eval(&main_arena, commands, &ctx);
+        if (err.kind == ERROR_parser_err) {
             ret = 2;
             printf("%s: expecting %s, got '%s'\n", argv[0], err.data.parser->expect, err.data.parser->got);
             goto quit_no_cleanup;
@@ -418,10 +432,10 @@ main(int argc, char **argv) {
             ret = 1;
             goto quit_no_cleanup;
         }
-        Error err = orish_eval(&main_arena, commands);
+        Error err = orish_eval(&main_arena, commands, &ctx);
         if (err.kind) {
             ret = 2;
-            if (err.kind == Parser_Err) {
+            if (err.kind == ERROR_parser_err) {
                 printf("%s: expecting %s, got '%s'\n", argv[0], err.data.parser->expect, err.data.parser->got);
             }
             if (munmap(commands, stat.st_size) <= -1) {
@@ -441,13 +455,13 @@ main(int argc, char **argv) {
             continue;
         };
         if (ggets_err) exit(34);
-        Error err = orish_eval(&main_arena, commands);
+        Error err = orish_eval(&main_arena, commands, &ctx);
         free(commands);
-        if (err.kind == Runtime_Err) {
+        if (err.kind == ERROR_runtime_err) {
             ret = 2;
             goto cleanup;
         }
-        if (err.kind == Parser_Err) {
+        if (err.kind == ERROR_parser_err) {
             printf("%s: expecting %s, got '%s'\n", argv[0], err.data.parser->expect, err.data.parser->got);
         }
     }
