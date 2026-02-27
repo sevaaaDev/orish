@@ -15,11 +15,19 @@
 // TODO: add testing
 
 /* ===== lexer ===== */
+enum Lex_Error {
+    LEX_ERROR_eof,
+    LEX_ERROR_unmatched_dquotes,
+    LEX_ERROR_unmatched_quotes,
+    LEX_ERROR_unmatched_parenthesis
+};
+
 struct Lexer {
+    size_t cur_line;
     const char *buf_start;
     const char *cur;
     const char *last_newline;
-    size_t cur_line;
+    enum Lex_Error err;
 };
 
 struct Lexer 
@@ -93,6 +101,20 @@ lexer_scan(Arena *arena, struct Lexer *l) {
                 l->cur++;
             }
             return make_token(arena, TOKEN_linebreak, NULL);
+        case '"':
+            while (*(l->cur) != ';' 
+                && *(l->cur) != '\0' 
+                && *(l->cur) != '\n' 
+                && *(l->cur) != '"') l->cur++;
+            if (*(l->cur) != '"') {
+                l->err = LEX_ERROR_unmatched_dquotes;
+                return NULL;
+            }
+            // uncomment if you want to include quotes
+            // l->cur++;
+            // and set start + 1 to be start
+            // and set l->cur - start - 1 to be l->cur - start
+            return make_token(arena, TOKEN_word, arena_strndup(arena, start + 1, l->cur - start - 1));
         default: 
             while (*(l->cur) != ';' 
                 && *(l->cur) != '\0' 
@@ -103,6 +125,7 @@ lexer_scan(Arena *arena, struct Lexer *l) {
             return make_token(arena, TOKEN_word, cmd);
         }
     }
+    l->err = LEX_ERROR_eof;
     return NULL;
 }
 
@@ -147,7 +170,7 @@ make_node(Arena *arena, enum Ast_Type t, struct Token *tok) {
     struct Ast_Node *node = arena_alloc(arena, sizeof(struct Ast_Node));
     node->type = t; 
     node->token = tok; 
-    node->children = (struct Array_Ast_Node){0};
+    node->children = (struct Ast_Node_da){0};
     return node;
 }
 
@@ -177,6 +200,7 @@ struct Parser {
     struct Lexer *l;
     struct Token *lookahead;
     struct Token *lookahead_2;
+    Parser_Error err;
 };
 
 struct Parser 
