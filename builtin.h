@@ -21,7 +21,7 @@ int orish_builtin_cd(int argc, char **argv, char *prog) {
         path = getenv("HOME");
     }
     if (chdir(path) == -1) {
-        printf("%s: cd: %s\n", prog, strerror(errno));
+        printf("%s: cd: %s: %s\n", prog, path, strerror(errno));
         return 1;
     }
     return 0;
