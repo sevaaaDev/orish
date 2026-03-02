@@ -8,142 +8,11 @@
 #include <sys/stat.h>
 #include <sys/mman.h>
 #include <fcntl.h>
-#define ARENA_IMPLEMENTATION
-#include "arena.h"
-
 // TODO: split code to different files
 // TODO: add testing
 
-/* ===== lexer ===== */
-enum Lex_Error {
-    LEX_ERROR_eof,
-    LEX_ERROR_unmatched_dquotes,
-    LEX_ERROR_unmatched_quotes,
-    LEX_ERROR_unmatched_parenthesis
-};
+#include "./lexer.h"
 
-struct Lexer {
-    size_t cur_line;
-    const char *buf_start;
-    const char *cur;
-    const char *last_newline;
-    enum Lex_Error err;
-};
-
-struct Lexer 
-lexer_new(const char *input) {
-    struct Lexer l;
-    l.buf_start = input;
-    l.cur = input;
-    l.last_newline = input;
-    l.cur_line = 1;
-    return l;
-}
-
-/* these are generic token, you must use TODO: lexer_classify_reserved() to determine the specific token.
- * all reserved word is also a normal word, this mean you can use TOKEN_reserved
- * in the place of normal word.
- * 
- * TOKEN_reserved can only be converted to specific reserved word if and only if it was preceeded by
- * TOKEN_separator or linebreak, else it is treated as normal word.
- * */
-enum Token_Type {
-    TOKEN_separator,
-    TOKEN_linebreak,
-    TOKEN_word,
-    TOKEN_reserved,
-};
-
-// TODO: embed linenum and column to token
-struct Token {
-    enum Token_Type type; 
-    char *value;
-}; 
-
-struct Token *
-make_token(Arena *arena, enum Token_Type t, char *value) {
-    struct Token *tok = arena_alloc(arena, sizeof(struct Token));
-    if (!tok) {
-        printf("arena_alloc error");
-        exit(1);
-    }
-    tok->type = t;
-    tok->value = value;
-    return tok;
-}
-
-char *arena_strndup(Arena *arena, const char *src, size_t len) {
-    char *str = arena_alloc(arena, len+1);
-    strncpy(str, src, len);
-    str[len] = '\0';
-    return str;
-}
-
-/* handle reading from file (handle newline) */
-struct Token *
-lexer_scan(Arena *arena, struct Lexer *l) {
-    while (*(l->cur) != '\0') {
-        const char *start = l->cur++;
-        switch (*start) {
-        case ' ':
-            break;
-        case ';':
-            return make_token(arena, TOKEN_separator, arena_strndup(arena, start, l->cur - start));
-            break;
-        case '\n':
-            l->cur_line++;
-            l->last_newline = l->cur;
-            while (*(l->cur) == '\n' || *(l->cur) == ' ') {
-                if (*(l->cur) == '\n') {
-                    l->cur_line++;
-                    l->last_newline = l->cur;
-                }
-                l->cur++;
-            }
-            return make_token(arena, TOKEN_linebreak, NULL);
-        case '"':
-            while (*(l->cur) != ';' 
-                && *(l->cur) != '\0' 
-                && *(l->cur) != '\n' 
-                && *(l->cur) != '"') l->cur++;
-            if (*(l->cur) != '"') {
-                l->err = LEX_ERROR_unmatched_dquotes;
-                return NULL;
-            }
-            // uncomment if you want to include quotes
-            // l->cur++;
-            // and set start + 1 to be start
-            // and set l->cur - start - 1 to be l->cur - start
-            return make_token(arena, TOKEN_word, arena_strndup(arena, start + 1, l->cur - start - 1));
-        default: 
-            while (*(l->cur) != ';' 
-                && *(l->cur) != '\0' 
-                && *(l->cur) != '\n' 
-                && *(l->cur) != ' ') l->cur++;
-            int len = l->cur - start;  
-            char *cmd = arena_strndup(arena, start, len);
-            return make_token(arena, TOKEN_word, cmd);
-        }
-    }
-    l->err = LEX_ERROR_eof;
-    return NULL;
-}
-
-/* this function will be used when we implement keyword */
-/* TODO: find good name for this
- *    - lexer_token_classified_as
- *    - lexer_token_allow_reclassify
- * */
-bool
-lexer_classify_word(enum Token_Type type, const struct Token *tok) {
-    if (tok->type != TOKEN_word) return false;
-    switch (type) {
-    case TOKEN_word:
-        return true;
-    default:
-        return false;
-    }
-}
 
 /* ===== parser ===== */
 enum Ast_Type {
@@ -304,7 +173,7 @@ parse_all_commands(Arena *arena, struct Parser *p, struct Ast_Node **out) {
 }
 
 /* ===== exec ===== */
-#include "builtin.h"
+#include "../builtin.h"
 
 struct Runtime_Error {
     int exit_code;
@@ -407,7 +276,7 @@ orish_eval(Arena *arena, const char *input, Context *ctx) {
 }
 
 #define GGETS_IMPLEMENTATION
-#include "ggets.h"
+#include "../ggets.h"
 
 struct Flags {
     bool interactive;
@@ -495,3 +364,7 @@ main(int argc, char **argv) {
     quit_no_cleanup:
     return ret;
 }
+
+#define ARENA_IMPLEMENTATION
+#include "../arena.h"
+
