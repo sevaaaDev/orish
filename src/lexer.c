@@ -59,6 +59,7 @@ lexer_scan(Arena *arena, struct Lexer *l)
             }
             return make_token(arena, TOKEN_linebreak, NULL);
         case '\'':
+        squote:
             while (*(l->cur) != '\0' 
                 && *(l->cur) != '\'') l->cur++;
             if (*(l->cur) != '\'') {
@@ -66,16 +67,34 @@ lexer_scan(Arena *arena, struct Lexer *l)
                 return NULL;
             }
             l->cur++;
-            // uncomment if you want to include quotes
-            // l->cur++;
-            // and set start + 1 to be start
-            // and set l->cur - start - 1 to be l->cur - start
-            return make_token(arena, TOKEN_word, arena_strndup(arena, start + 1, l->cur - start - 1));
+
+            goto normal;
+        case '"':
+        dquote:
+            while (*(l->cur) != '\0' && *(l->cur) != '"') {
+                if (*(l->cur) == '\\') l->cur++;
+                l->cur++;
+            }
+            if (*(l->cur) != '"') {
+                l->err = LEX_ERROR_unmatched_dquotes;
+                return NULL;
+            }
+            l->cur++;
+            goto normal;
         default: 
+        normal:
             while (*(l->cur) != ';'  && *(l->cur) != '\0' 
                 && *(l->cur) != '\n' && *(l->cur) != ' ') {
                 if (*(l->cur) == '\\') l->cur++;
                 l->cur++;
+                if (*(l->cur) == '\'') {
+                    l->cur++;
+                    goto squote;
+                }
+                if (*(l->cur) == '"') {
+                    l->cur++;
+                    goto dquote;
+                }
             }
             int len = l->cur - start;  
             char *cmd = arena_strndup(arena, start, len);
