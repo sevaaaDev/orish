@@ -49,4 +49,6 @@ struct Token * lexer_scan(Arena *arena, struct Lexer *l);
  *    - lexer_token_allow_reclassify
  * */
 bool lexer_classify_word(enum Token_Type type, const struct Token *tok);
+
+char * lexer_util_quote_remover(Arena *arena, char *original);
 #endif

@@ -121,3 +121,45 @@ lexer_classify_word(enum Token_Type type, const struct Token *tok)
         return false;
     }
 }
+
+char * 
+lexer_util_quote_remover(Arena *arena, char *original)
+{
+    // use memmove to shift char
+    // when found \ ' ", we shift
+    int len = strlen(original);
+    char *duped = arena_strdup(arena, original);  
+    enum {no, squote, dquote} inside = no;
+    for (int i = 0; i < len; i++) {
+        if (duped[i] == '\0') {
+            break;
+        }
+        switch (duped[i]) {
+        case '\'':
+            if (inside == dquote) continue;
+            if (inside == squote)
+                inside = no;
+            else
+                inside = squote;
+            memmove(&duped[i], &duped[i+1], len - i);
+            break;
+        case '"':
+            if (inside == squote) continue;
+            if (inside == dquote)
+                inside = no;
+            else
+                inside = dquote;
+            memmove(&duped[i], &duped[i+1], len - i);
+            break;
+        case '\\': 
+            if (inside == squote) continue;
+            if (inside == dquote) {
+                if (duped[i+1] != '"') continue;
+            }
+            // the next i need to be moved -1
+            memmove(&duped[i], &duped[i+1], len - i);
+            break;
+        }
+    }
+    return duped;
+}
