@@ -108,6 +108,16 @@ consume_token(Arena *arena, struct Parser *p) {
 
 Parser_Error *
 parse_simple_command(Arena *arena, struct Parser *p, struct Ast_Node **out) {
+    // TODO: because lexer may return error, we have to figure out where to handle it
+    /* solution 1
+     * Parser_Error wrap lexer error
+     *  typedef struct Parser_Error {
+     *      enum Parser_Stat_Kind kind;
+     *      union {parser, lexer} unwrap;
+     *  } Parser_Error;
+     * 
+     * solution 2
+     * interface? func ptr? */
     if (!peek_token(arena, p)) {
        return make_parser_error(arena, consume_token(arena, p), "", "string");
     }
@@ -184,18 +194,18 @@ struct Runtime_Error {
 typedef struct Context {
     int exit_code;
     char *prog_name;
+    Arena *arena;
 } Context;
 
 void
 exec_cmd(struct Ast_Node *root, Context *ctx) {
     if (root->type != AST_TYPE_cmd) return;
-    /* WARN: is empty init equal to zero init? the last elem must be 0 */
     /* WARN: variable size array means we cant do argument expansion,
      *       because the argc will be greater than children count */
     char *argv[root->children.count+1] = {};
     for (size_t i = 0; i < root->children.count; ++i) {
         struct Ast_Node *child = root->children.items[i];
-        argv[i] = child->token->value;
+        argv[i] = lexer_util_quote_remover(ctx->arena, child->token->value);
     }
     if (!strcmp(argv[0], "exit")) {
         ctx->exit_code = orish_builtin_exit(root->children.count, argv);
@@ -298,8 +308,8 @@ main(int argc, char **argv) {
             flags.filename = argv[1];
         }
     }
-    Context ctx = {.prog_name = argv[0]};
     Arena main_arena = {0};
+    Context ctx = {.prog_name = argv[0], .arena = &main_arena};
     // TODO: simplify branch
     if (flags.cmd_string) {
         char *commands = flags.cmd_string;
