@@ -22,13 +22,72 @@
 #define BG_BCYAN    "\033[106m"
 #define BG_BWHITE   "\033[107m"
 
+// counters
+static int tests_run = 0;
+static int tests_failed = 0;
+
+// test definition
+#define TEST(name) void name(void)
+
+// run test
+#define RUN_TEST(test) \
+    do { \
+        tests_run++; \
+        printf("Running %s...\n", #test); \
+        test(); \
+    } while (0)
+
+// assert true
+#define ASSERT_TRUE(cond) \
+    do { \
+        if (!(cond)) { \
+            printf(BG_BRED BWHITE " FAIL " RESET " %s\n  at %s:%d\n", \
+                   #cond, __FILE__, __LINE__); \
+        } else { \
+            printf(BG_BCYAN BLACK "  OK  " RESET " "#cond" == true\n"); \
+        } \
+    } while (0)
+
+// assert equal (int)
+#define ASSERT_EQ(a, b) \
+    do { \
+        if ((a) != (b)) { \
+            printf(BG_BRED BWHITE " FAIL " RESET \
+                   " %s == %s (got %d vs %d)\n  at %s:%d\n", \
+                   #a, #b, (a), (b), __FILE__, __LINE__); \
+        } else { \
+            printf(BG_BCYAN BLACK "  OK  " RESET " "#a" == "#b"\n"); \
+        } \
+    } while (0)
+
+#define ASSERT_STR_EQ(a, b) \
+    do { \
+        if (strcmp((a), (b))) { \
+            printf(BG_BRED BWHITE " FAIL " RESET \
+                   " %s == %s (got %s vs %s)\n  at %s:%d\n", \
+                   #a, #b, (a), (b), __FILE__, __LINE__); \
+        } else { \
+            printf(BG_BCYAN BLACK "  OK  " RESET " %s == %s\n", #a, (b)); \
+        } \
+    } while (0)
+
+// mark success (optional explicit)
+#define TEST_PASS(msg) \
+    do { \
+        printf(BG_BGREEN BWHITE "  OK  " RESET "\n"); \
+    } while (0)
+
 #define test(expr, msg) do {\
     if (!(expr)) { \
         printf("    "BG_BRED BLACK" FAIL "RESET" "msg"\n"); \
+        fprintf(stderr, \
+            "Assertion failed: %s\nFile: %s\nLine: %d\nFunction: %s\n", \
+            #expr, __FILE__, __LINE__, __func__); \
     } else { \
         printf("    "BG_BCYAN BLACK" OK "RESET" "msg"\n"); \
     } \
 } while(0)
+
 
 #define group(title) printf(title"\n"); if (1)
 
