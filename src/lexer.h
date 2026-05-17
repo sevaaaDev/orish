@@ -1,5 +1,6 @@
 #ifndef LEXER_H
 #define LEXER_H
+#include <setjmp.h>
 
 #include "../arena.h"
 
@@ -15,7 +16,6 @@ struct Lexer {
     const char *buf_start;
     const char *cur;
     const char *last_newline;
-    enum Lex_Error err;
 };
 
 
@@ -39,9 +39,15 @@ struct Token {
     char *value;
 }; 
 
+struct Token_da {
+    size_t capacity;
+    size_t count;
+    struct Token **items;
+}; 
+
 struct Lexer   lexer_new(const char *input);
 struct Token * make_token(Arena *arena, enum Token_Type t, char *value); 
-struct Token * lexer_scan(Arena *arena, struct Lexer *l);
+struct Token * lexer_scan(Arena *arena, struct Lexer *l, jmp_buf *jmp);
 
 /* this function will be used when we implement keyword */
 /* TODO: find good name for this

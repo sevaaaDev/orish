@@ -1,5 +1,7 @@
 #include <stdlib.h>
 #include <string.h>
+#include <setjmp.h>
+
 #include "./lexer.h"
 
 struct Lexer 
@@ -37,7 +39,7 @@ arena_strndup(Arena *arena, const char *src, size_t len)
 
 /* handle reading from file (handle newline) */
 struct Token *
-lexer_scan(Arena *arena, struct Lexer *l)
+lexer_scan(Arena *arena, struct Lexer *l, jmp_buf *jmp)
 {
     while (*(l->cur) != '\0') {
         const char *start = l->cur++;
@@ -63,8 +65,8 @@ lexer_scan(Arena *arena, struct Lexer *l)
             while (*(l->cur) != '\0' 
                 && *(l->cur) != '\'') l->cur++;
             if (*(l->cur) != '\'') {
-                l->err = LEX_ERROR_unmatched_dquotes;
-                return NULL;
+                printf("unmatched quotes\n");
+                longjmp(*jmp, 1);
             }
             l->cur++;
 
@@ -76,8 +78,8 @@ lexer_scan(Arena *arena, struct Lexer *l)
                 l->cur++;
             }
             if (*(l->cur) != '"') {
-                l->err = LEX_ERROR_unmatched_dquotes;
-                return NULL;
+                printf("unmatched quotes\n");
+                longjmp(*jmp, 1);
             }
             l->cur++;
             goto normal;
@@ -101,7 +103,7 @@ lexer_scan(Arena *arena, struct Lexer *l)
             return make_token(arena, TOKEN_word, cmd);
         }
     }
-    l->err = LEX_ERROR_eof;
+    // eof
     return NULL;
 }
 
