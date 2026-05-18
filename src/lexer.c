@@ -4,6 +4,13 @@
 
 #include "./lexer.h"
 
+const char *tokentostr[] = {
+    [TOKEN_separator] = "semicolon",
+    [TOKEN_linebreak] = "linebreak",
+    [TOKEN_word] = "string",
+    [TOKEN_reserved] = "keyword",
+};
+
 struct Lexer 
 lexer_new(const char *input)
 {

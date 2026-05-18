@@ -14,7 +14,7 @@
 #include "./lexer.h"
 #include "./parser.h"
 
-char *prog_name;
+char *prog_name = "orish";
 
 /* ===== exec ===== */
 #include "../builtin.h"

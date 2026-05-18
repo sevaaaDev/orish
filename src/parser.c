@@ -2,6 +2,15 @@
 
 #include "parser.h"
 
+#define synerror(jmp, text, ...) \
+    do { \
+        printf("%s: " text "\n", prog_name, ##__VA_ARGS__); \
+        longjmp((jmp), 1); \
+    } while(0)
+        
+extern char *prog_name;
+extern char *tokentostr[];
+
 static const struct Token *
 peek_token(Arena *arena, struct Parser *p) {
     if (p->lookahead == NULL)
@@ -65,18 +74,29 @@ make_node(Arena *arena, enum Node_Kind t, struct Token *tok) {
     return node;
 }
 
+static void
+synexpect(enum Token_Type t, struct Parser *p) {
+    struct Token *tok = peek_token(p->main_arena, p);
+    //      tok   !tok
+    // any  ok    err
+    // t    ok/e  err
+    if (!tok) {
+        // TODO: is there a need for tok any? 
+        if (t == TOKEN_any)
+            synerror(*p->exception_jump, "expect a string");
+        synerror(*p->exception_jump, "expect a %s, got nothing", tokentostr[t]);
+    }
+    if (t == TOKEN_any) return;
+    if (tok->type != t) {
+        synerror(*p->exception_jump, "expect a %s, got '%s'", tokentostr[t], tok->value);
+    }
+}
+
 static struct Node *
 simple_command(struct Parser *p) 
 {
-    if (!peek_token(p->main_arena, p)) {
-       printf("expect a string\n");
-       longjmp(*p->exception_jump, 1);
-    }
-    if (!lexer_classify_word(TOKEN_word, peek_token(p->main_arena, p))) {
-       struct Token *got = consume_token(p->main_arena, p);
-       printf("expect a command, got '%s'\n", got->value);
-       longjmp(*p->exception_jump, 1);
-    }
+    synexpect(TOKEN_word, p);
+
     struct Node *node = make_node(p->main_arena, NODE_cmd, NULL);
     struct Token_da arr = {0};
     do {

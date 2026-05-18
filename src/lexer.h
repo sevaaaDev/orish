@@ -4,13 +4,6 @@
 
 #include "../arena.h"
 
-enum Lex_Error {
-    LEX_ERROR_eof,
-    LEX_ERROR_unmatched_dquotes,
-    LEX_ERROR_unmatched_quotes,
-    LEX_ERROR_unmatched_parenthesis
-};
-
 struct Lexer {
     size_t cur_line;
     const char *buf_start;
@@ -27,6 +20,7 @@ struct Lexer {
  * TOKEN_separator or linebreak, else it is treated as normal word.
  * */
 enum Token_Type {
+    TOKEN_any = -1,
     TOKEN_separator,
     TOKEN_linebreak,
     TOKEN_word,
