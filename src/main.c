@@ -107,8 +107,34 @@ struct Flags {
 
 jmp_buf main_jump;
 
+// source is char*, so we can read from file and from -c argument
 int
-main(int argc, char **argv) {
+get_line(char *source, char **out_line)
+{
+    char *line = NULL;
+    if (source == NULL) {
+        int ggets_err;
+        do {
+            printf("orish> ");
+            ggets_err = ggets(&line);
+            if (ggets_err == EOF) {
+                printf("\nEOF\n");
+                return EOF;
+            };
+            assert(line);
+        } while(*line == '\0');
+        *out_line = line;
+        return ggets_err; 
+    }
+    if (source) {
+        assert(false && "TODO: implement reading file");
+    }
+
+}
+
+int
+main(int argc, char **argv)
+{
     int ret = 0;
     struct Flags flags = {0};
     flags.interactive = true;
@@ -167,25 +193,16 @@ main(int argc, char **argv) {
     while (flags.interactive && running) {
         char *commands = NULL;
         if (setjmp(main_jump) == 0) {
-            printf("orish> ");
-            int ggets_err = ggets(&commands);
-            if (ggets_err == EOF) {
-                printf("\nEOF\n");
+            int lineerr = get_line(NULL, &commands);
+            if (lineerr == EOF) {
                 running = false;
                 continue;
             };
-            if (ggets_err) exit(34);
+            if (lineerr) exit(34);
             struct Lexer lexer = lexer_new(commands);
             struct Parser parser = parser_new(&lexer, &main_jump, &second_arena, &main_arena);
             struct Node *root = parse(&parser);
             int status = exec_cmd(root, &ctx);
-            // if (err.kind == ERROR_runtime_err) {
-            //     ret = 2;
-            //     goto cleanup;
-            // }
-            // if (err.kind == ERROR_parser_err) {
-            //     printf("%s: expecting %s, got '%s'\n", argv[0], err.data.parser->expect, err.data.parser->got);
-            // }
         }
         if (commands) free(commands);
         arena_free(&main_arena);
