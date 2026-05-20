@@ -46,7 +46,7 @@ exec_cmd(struct Node *root, Context *ctx) {
     if (pid == -1) return 1; 
     if (pid == 0) {
         if (execvp(argv[0], argv) == -1) {
-            perror(argv[0]);
+            printf("%s: %s: command not found", prog_name, argv[0]);
             exit(127);
         } 
     }
