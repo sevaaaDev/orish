@@ -107,9 +107,16 @@ struct Flags {
 
 jmp_buf main_jump;
 
+
+struct Source {
+    char *start;
+    char *cur;
+    size_t len;
+};
+
 // source is char*, so we can read from file and from -c argument
 int
-get_line(char *source, char **out_line)
+get_line(struct Source *source, char **out_line)
 {
     char *line = NULL;
     if (source == NULL) {
@@ -127,9 +134,20 @@ get_line(char *source, char **out_line)
         return ggets_err; 
     }
     if (source) {
-        assert(false && "TODO: implement reading file");
+        if (source->cur - source->start >= source->len) return EOF;
+        char *start;
+        do {
+            char *cur = source->cur;
+            start = cur;
+            while (*cur != '\0' && *cur != '\n') { 
+                cur++;
+            }
+            *cur = '\0';
+            source->cur = cur+1;
+        } while (*start == '\0');
+        *out_line = start;
     }
-
+    return 0;
 }
 
 int
@@ -152,17 +170,16 @@ main(int argc, char **argv)
     Arena second_arena = {0};
     Context ctx = {.arena = &main_arena};
     // TODO: simplify branch
+    struct Source *src_handler = NULL;
+    struct Source real_src = {0};
     if (flags.cmd_string) {
-        char *commands = flags.cmd_string;
-        Error err = orish_eval(&main_arena, commands, &ctx);
-        if (err.kind == ERROR_parser_err) {
-            ret = 2;
-            // printf("%s: expecting %s, got '%s'\n", argv[0], err.data.parser->expect, err.data.parser->got);
-            goto quit_no_cleanup;
-        }
+        real_src.start = flags.cmd_string;
+        real_src.cur = flags.cmd_string;
+        real_src.len = strlen(flags.cmd_string);
+        src_handler = &real_src;
     }
     if (flags.filename) {
-        int fd = open(flags.filename, O_RDONLY);
+        int fd = open(flags.filename, O_RDWR);
         if (fd <= -1) {
             printf("%s: internal error: %s\n", argv[0], strerror(errno));
             ret = 1;
@@ -170,30 +187,24 @@ main(int argc, char **argv)
         }
         struct stat stat;
         fstat(fd, &stat);
-        char *commands = mmap(NULL, stat.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+        char *commands = mmap(NULL, stat.st_size, PROT_READ|PROT_WRITE, MAP_PRIVATE, fd, 0);
         close(fd);
         if (commands == MAP_FAILED) {
             printf("%s: internal error: %s\n", argv[0], strerror(errno));
             ret = 1;
             goto quit_no_cleanup;
         }
-        Error err = orish_eval(&main_arena, commands, &ctx);
-        if (munmap(commands, stat.st_size) <= -1) {
-            printf("%s: internal error %s\n", argv[0], strerror(errno));
-        }
-        if (err.kind) {
-            ret = 2;
-            if (err.kind == ERROR_parser_err) {
-                // printf("%s: expecting %s, got '%s'\n", argv[0], err.data.parser->expect, err.data.parser->got);
-            }
-            goto cleanup;
-        }
+        real_src.start = commands;
+        real_src.cur = commands;
+        real_src.len = stat.st_size;
+        src_handler = &real_src;
+        prog_name = flags.filename;
     }
     bool running = true;
-    while (flags.interactive && running) {
+    while (running) {
         char *commands = NULL;
         if (setjmp(main_jump) == 0) {
-            int lineerr = get_line(NULL, &commands);
+            int lineerr = get_line(src_handler, &commands);
             if (lineerr == EOF) {
                 running = false;
                 continue;
@@ -203,12 +214,21 @@ main(int argc, char **argv)
             struct Parser parser = parser_new(&lexer, &main_jump, &second_arena, &main_arena);
             struct Node *root = parse(&parser);
             int status = exec_cmd(root, &ctx);
-        }
-        if (commands) free(commands);
-        arena_free(&main_arena);
+        } else {
+            if (!flags.interactive) running = false;
+        };
+        if (flags.interactive && commands) free(commands);
+        arena_reset(&main_arena);
+        arena_reset(&second_arena);
     }
 cleanup:
+    if (flags.filename) {
+        if (munmap(real_src.start, real_src.len) <= -1) {
+            printf("%s: internal error %s\n", argv[0], strerror(errno));
+        }
+    }
     arena_free(&main_arena);
+    arena_free(&second_arena);
 quit_no_cleanup:
     return ret;
 }

@@ -105,7 +105,7 @@ simple_command(struct Parser *p)
     } while(peek_token(p->main_arena, p) && lexer_classify_word(TOKEN_word, peek_token(p->main_arena, p)));
 
     node->simple.argv = arena_alloc(p->main_arena, sizeof(char *) * (arr.count + 1));
-    for (int i = 0; i < arr.count; i++) {
+    for (size_t i = 0; i < arr.count; i++) {
         node->simple.argv[i] = arr.items[i]->value;
     }
     node->simple.argv[arr.count] = NULL; 

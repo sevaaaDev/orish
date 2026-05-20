@@ -1,0 +1,9 @@
+set up input source (interactive, file, argument)
+eval_command:
+    try:
+        read input per line
+        parse the line
+        exec the parse tree
+    free arena and memory
+    loop again if interactive
+return exit_code
